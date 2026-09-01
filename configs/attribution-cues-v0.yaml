@@ -1,0 +1,92 @@
+schema_version: attribution-cues/0.1
+lexicon_id: attribution-cues-v0
+
+# Provenance cues read ONLY from deterministic structure: a table row label from the
+# region index, or a table caption. No cue is ever supplied by a model.
+#
+# A decisive cue may demote a candidate out of the export gate. An abstaining cue may
+# only route it to review. A cue graduates from abstaining to decisive only with a
+# measured firing record over real row labels, recorded below.
+#
+# Examples below are invented strings that exercise each pattern. Aggregate firing
+# counts come from a private development audit; source rows are intentionally absent.
+
+decisive_row_cues:
+  - id: leaderboard
+    pattern: '\bleader(?:board)?s?\b'
+    rationale: >-
+      A leaderboard entry is by construction a score produced by whoever submitted it,
+      not by the paper printing the table.
+    justifying_example: "Example System (Leaderboard Entry)"
+    justifying_source: private-development-audit
+    measured_fires: 1
+    measured_over_distinct_row_labels: 432
+
+  - id: rank_marker
+    pattern: '(?:#\s*\d{1,3}\b|\btop-?\d{1,3}\b|\b1st\b|\bwinner\b)'
+    rationale: >-
+      A rank in a row label names a position in someone else's ranking rather than a
+      system the paper evaluated.
+    justifying_example: "Example System #1"
+    justifying_source: private-development-audit
+    measured_fires: 1
+    measured_over_distinct_row_labels: 432
+
+  - id: attributed_author
+    pattern: '\bet\s+al\.'
+    rationale: >-
+      An author name in a row label attributes the row to that author's work.
+    justifying_example: "Example et al. [1]"
+    justifying_source: private-development-audit
+    measured_fires: 1
+    measured_over_distinct_row_labels: 432
+
+  - id: attributed_source
+    pattern: '\b(?:as reported(?: in| by)?|taken from|reproduced from|reported by|copied from)\b'
+    rationale: >-
+      An explicit attributing phrase inside the row label names an external source.
+    justifying_example: "Example Model (as reported in [1])"
+    justifying_source: synthetic
+    measured_fires: 0
+    measured_over_distinct_row_labels: 432
+
+# Abstaining cues route to review and never demote on their own. A bare citation
+# bracket is the important case: measured over 432 distinct row labels it fires 10
+# times, and the majority were dataset citations, where the citation names the dataset
+# and not the origin of the number. It must never be decisive.
+abstaining_row_cues:
+  - id: citation_bracket
+    pattern: '\[\d{1,3}(?:\s*,\s*\d{1,3})*\]'
+    rationale: >-
+      A citation inside a row label may attribute the result or merely cite the dataset
+      or the model architecture. The two cannot be told apart from the label alone.
+    justifying_example: "Example Dataset [1]"
+    justifying_source: private-development-audit
+    measured_fires: 10
+    measured_over_distinct_row_labels: 432
+
+  - id: prior_work
+    pattern: '\b(?:prior|previous|earlier|original)\s+(?:work|paper|study|authors?|result)\b'
+    rationale: >-
+      Names earlier work, but a paper may also re-run earlier work itself.
+    justifying_example: "prior work"
+    justifying_source: synthetic
+    measured_fires: 0
+    measured_over_distinct_row_labels: 432
+
+# Caption cues never decide. A caption covers every row and may mix a phrase about
+# externally reported results with a phrase about the current paper's own system.
+abstaining_caption_cues:
+  - id: caption_reported
+    pattern: '\b(?:reported|published|leaderboard)\b'
+    rationale: >-
+      Signals that the table carries numbers the paper did not produce, without saying
+      which rows.
+    justifying_example: "Table 1. Reported benchmark performance."
+    justifying_source: synthetic
+  - id: caption_attributed
+    pattern: '\b(?:as reported(?: in| by)?|taken from|reproduced from|from the .{0,24}paper)\b'
+    rationale: >-
+      An explicit attributing phrase in a caption.
+    justifying_example: "results reproduced from the earlier paper"
+    justifying_source: synthetic

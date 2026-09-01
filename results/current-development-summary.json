@@ -1,0 +1,199 @@
+{
+  "annotation_status": {
+    "adjudication_available": false,
+    "inter_annotator_agreement_available": false,
+    "single_annotator_aggregate_included": false
+  },
+  "canonical_eee": {
+    "positive_paper_produced_origin_required": true,
+    "records": 0,
+    "safe_empty_output_is_valid": true,
+    "schema_issues": 0,
+    "status": "empty"
+  },
+  "limitations": [
+    "This is an open-development result, not holdout or generalization evidence.",
+    "Current precision, full-tuple correctness, and non-result-row specificity remain unmeasured.",
+    "Canonical EEE can be empty when positive paper-produced origin is not established.",
+    "Provider usage is artifact-basis telemetry and totals are lower bounds when failed or superseded attempt telemetry is unavailable.",
+    "Private human responses and individual labels are not included."
+  ],
+  "numeric_export_provenance": {
+    "all_complete": null,
+    "complete_observations": 0,
+    "evidence_quotations_included": false,
+    "exported_observations": 0,
+    "status": "not_applicable_empty_export"
+  },
+  "outputs": {
+    "attribution_state_counts": {
+      "externally_sourced": 3,
+      "no_signal": 775,
+      "unresolved": 300
+    },
+    "candidate_proposal_removal_rate": 0.16885119506553586,
+    "candidates": 1078,
+    "candidates_before_deduplication": 1297,
+    "candidates_needing_review": 1055,
+    "duplicates_removed": 219,
+    "eee_records": 0,
+    "eee_schema_issues": 0,
+    "export_status_counts": {
+      "needs_review": 1055,
+      "not_eligible": 23
+    },
+    "exported": 0,
+    "referential_status_counts": {
+      "resolved": 447,
+      "unresolved": 264,
+      "unverified": 23,
+      "wrong_scope": 344
+    },
+    "semantic_safety_reviews": 344,
+    "text_support_status_counts": {
+      "supported": 932,
+      "unsupported": 146
+    }
+  },
+  "privacy": {
+    "credentials_included": false,
+    "evidence_quotations_included": false,
+    "local_paths_included": false,
+    "paper_level_rows_or_labels_included": false,
+    "private_annotations_included": false,
+    "provider_traces_included": false,
+    "request_identifiers_included": false
+  },
+  "provider_usage_recorded": {
+    "attempt_records_without_completed_provider_call": 0,
+    "basis": "Completed provider invocations retained in the final development-run artifact. Legacy checkpoint calls are excluded. Row calls restored from a row checkpoint remain included because the final artifact cannot distinguish process-local spend. Cost, token, retry, and attempt totals are lower bounds when provider metadata or failed transport attempts are unavailable.",
+    "cost_missing_invocations": 0,
+    "cost_reported_invocations": 155,
+    "cost_usd_lower_bound": 1.30342832,
+    "input_tokens_lower_bound": 773348,
+    "input_tokens_missing_invocations": 0,
+    "input_tokens_reported_invocations": 155,
+    "latency_seconds_max": 38.031681,
+    "latency_seconds_total": 1231.530831,
+    "output_tokens_lower_bound": 429002,
+    "output_tokens_missing_invocations": 0,
+    "output_tokens_reported_invocations": 155,
+    "recorded_legacy_structured_invocations": 6,
+    "recorded_row_structured_invocations": 149,
+    "recorded_structured_invocations": 155,
+    "retries_lower_bound": 0,
+    "row_batches_resumed": 120,
+    "total_tokens_lower_bound": 1202350,
+    "total_tokens_missing_invocations": 0,
+    "total_tokens_reported_invocations": 155,
+    "transport_attempts_lower_bound": 155
+  },
+  "reference_evaluation": {
+    "coverage_statement": "Candidate-layer recall over pre-existing annotated reference observations in the open development corpus; not canonical-EEE recall, whole-paper recall, holdout evidence, or generalization evidence.",
+    "false_negatives": 3,
+    "generalization_evidence": false,
+    "macro_recall": 0.7,
+    "micro_recall": 0.972477,
+    "precision": {
+      "computed_slice_diagnostic_omitted": true,
+      "reason": "The available annotation frame does not establish current whole-pipeline precision or non-result-row specificity.",
+      "status": "not_measured"
+    },
+    "reference_observations": 109,
+    "status": "candidate_layer_annotated_reference_recall_measured",
+    "true_positives": 106
+  },
+  "row_enumeration": {
+    "all_batchable_rows_resolved": false,
+    "all_planned_rows_partitioned": true,
+    "all_rows_accounted_for": true,
+    "complete_extraction": false,
+    "dense_tables": 70,
+    "dispositions": {
+      "not_result": 94,
+      "result": 177,
+      "uncertain": 44
+    },
+    "invalid_rows_seen": 29,
+    "no_unknown_or_invalid_rows_seen": false,
+    "rows_planned": 334,
+    "rows_resolved": 315,
+    "rows_unbatchable": 2,
+    "rows_unresolved": 17,
+    "tables_considered": 135,
+    "unknown_row_ids_seen": 0
+  },
+  "run_binding": {
+    "attribution": {
+      "lexicon_id": "attribution-cues-v0",
+      "lexicon_sha256": "6929a5e3f309cb583376595a26c63e9a829b681df5fb0973d6e3f83533f1d57e",
+      "schema_version": "attribution-verdict/0.2"
+    },
+    "code": {
+      "git_commit": "84db77e973245bb0318f9321347daa8bdcdf262c",
+      "git_dirty": true,
+      "source_tree_sha256": "bf58e3dd851e58935adde834393cc3a545b03da5fdcac7978ec8aeb9c812b308"
+    },
+    "corpus_id": "acm-perspective-10",
+    "corpus_run_sha256": "1dc30858d7023c8c96658b101c43aae2523f39a30e8b8ef63e558bbc8d9967d9",
+    "corpus_spec_sha256": "eb7c5225f4af7024c42215361f4044b3554a88e64e99dcb5ea8810c0bbac37b2",
+    "eee_schema": {
+      "sha256": "088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
+      "version": "0.2.2"
+    },
+    "extractor": {
+      "max_tokens": 16000,
+      "model": "google/gemini-3.5-flash-lite",
+      "prompt_sha256": "ddbc62294a689f3637dcc2f87156e8b48dd32c9ee1833a5ca27dd033e5aff6de",
+      "provider": "openrouter",
+      "reasoning_effort": "minimal",
+      "request_contract_sha256": "c94b599347ed32404bde2ff48a8613b57bb0e08c636f56245c6f2cdaf6b8d0ba",
+      "seed": 7,
+      "temperature": 0.0
+    },
+    "generated_at": "2026-09-01T19:35:52.938117+00:00",
+    "paper_ids_sha256": "eb5dafbefeb1f206e5c4200181dbf4e650a2f4705d25380c7d5a198b7975bec7",
+    "row_extractor": {
+      "limits": {
+        "max_characters_per_batch": 4000,
+        "max_recovery_depth": 1,
+        "max_rows_per_batch": 4,
+        "max_value_tokens_per_batch": 24,
+        "min_dense_table_rows": 2
+      },
+      "max_tokens": 16000,
+      "model": "google/gemini-3.5-flash-lite",
+      "prompt_sha256": "b90dfb2b5bdf1844135dfc68f50f554fe994ac2eafe7e1c217df9746be2f8065",
+      "provider": "openrouter",
+      "reasoning_effort": "minimal",
+      "request_contract_sha256": "fe9e3171df2209b3966815dbc30ce1bda439a51aec8343957c38b66785b6ca4c",
+      "seed": 7,
+      "temperature": 0.0
+    },
+    "run_id": "acm-perspective-10-row-enumeration-2026-09-01"
+  },
+  "schema_version": "public-development-summary/0.1",
+  "scope": {
+    "holdout_included": false,
+    "independent_human_validation": false,
+    "papers": 10,
+    "private_human_annotations_included": false,
+    "split": "development"
+  },
+  "statement": "Development-only aggregate for an evidence-first research prototype; human review is required and this is not validation for unattended extraction.",
+  "technical_health": {
+    "papers_failed": 8,
+    "papers_needing_review": 10,
+    "papers_succeeded": 2,
+    "review_reason_counts": {
+      "candidate_review_required": 9,
+      "row_enumeration_unbatchable": 2,
+      "row_enumeration_uncertain": 3,
+      "row_enumeration_unresolved": 6,
+      "zero_valid_eee_records": 10
+    },
+    "run_completeness": "bounded_row_stage_incomplete",
+    "status": "partial_failure",
+    "wall_clock_seconds": 197.213622
+  }
+}

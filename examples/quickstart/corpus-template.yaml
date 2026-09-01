@@ -1,0 +1,17 @@
+schema_version: pilot-corpus/0.2
+corpus_id: example-development-corpus
+evaluation_split: development
+description: Replace the example metadata and URL with the paper you want to process.
+
+papers:
+  - paper_id: example-paper-2026
+    title: Example Paper
+    year: 2026
+    venue: Example Venue
+    pdf_url: https://example.org/paper.pdf
+    perspective_role: Primary paper to inspect for reported evaluation results.
+    include_pages: []
+    max_result_pages: 8
+    supplement_urls: []
+    expected_spot_checks: []
+    notes: []

@@ -1,0 +1,71 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "synthetic-quickstart"
+    },
+    "name": "paper-reported",
+    "version": "example"
+  },
+  "evaluation_id": "example/synthetic-paper/synthetic-system",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Synthetic Test Split / Accuracy",
+      "evaluation_result_id": "synthetic-observation-001",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "accuracy",
+        "metric_kind": "accuracy",
+        "metric_name": "Accuracy",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "candidate_observation_id": "synthetic-observation-001",
+          "evidence_1_column": "Accuracy",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Synthetic Table 1",
+          "evidence_1_page": "1",
+          "evidence_1_quote_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_1_row": "Synthetic System",
+          "evidence_1_source_id": "synthetic-source",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "evidence_anchor_count": "1",
+          "paper_id": "synthetic-paper",
+          "raw_reported_value": "0.75",
+          "value_comparator": "exact"
+        },
+        "score": 0.75
+      },
+      "source_data": {
+        "additional_details": {
+          "split": "test"
+        },
+        "dataset_name": "Synthetic Dataset",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "synthetic"
+    },
+    "id": "synthetic-system",
+    "name": "Synthetic System"
+  },
+  "retrieved_timestamp": "1788200000",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "paper_id": "synthetic-paper"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Synthetic Paper",
+    "source_organization_name": "Synthetic Authors",
+    "source_type": "documentation"
+  }
+}

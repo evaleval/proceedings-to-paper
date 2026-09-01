@@ -1,0 +1,127 @@
+{
+  "abstention": {
+    "applies": true,
+    "classification": "unresolved",
+    "primary_reason": "unresolved_role",
+    "reason_counts": {
+      "correct_abstention": 0,
+      "low_confidence": 0,
+      "no_candidates": 0,
+      "non_primary_claim_type": 0,
+      "not_export_eligible": 1,
+      "paper_run_error": 0,
+      "schema_rejection": 0,
+      "unresolved_metric": 0,
+      "unresolved_role": 1,
+      "unresolved_scope": 1,
+      "unresolved_unit": 0,
+      "unsupported_evidence": 0,
+      "unverified_evidence": 0
+    }
+  },
+  "counts": {
+    "candidates": 1,
+    "eee_files": 0,
+    "eee_records": 0,
+    "eee_schema_issues": 0,
+    "exported_observations": 0
+  },
+  "eee": {
+    "links": [],
+    "reported_count_matches_files": true
+  },
+  "evaluation_status": "development",
+  "known_limitations": [
+    "No EEE record was produced; the structured abstention reasons identify the cause.",
+    "Reference quality was not measured for this paper.",
+    "Synthetic example for public inspection; it is not an extraction-quality result."
+  ],
+  "models": {
+    "extractor": "synthetic-fixture",
+    "provider": "offline",
+    "verifier_enabled": false,
+    "verifier_model": null
+  },
+  "paper": {
+    "paper_id": "synthetic-review-example",
+    "public_url": "https://example.org/proceedings/synthetic-review-example",
+    "title": "Synthetic Evaluation Report"
+  },
+  "pipeline": {
+    "configuration_sha256": "9584d2b7982db40e4b642b3b4f78b331aa0a92752f8fbc5c0fcc8ccd7a059e27",
+    "eee_schema_sha256": "088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
+    "eee_schema_version": "0.2.2",
+    "extractor_prompt_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "extractor_request_contract_sha256": "396532e8db0ffacb317eb91f61882e23d895a9591c372b8df4d49f42edbc3662",
+    "git_commit": "1111111111111111111111111111111111111111",
+    "source_tree_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "privacy": {
+    "credentials_included": false,
+    "evidence_quotations_included": false,
+    "local_paths_included": false,
+    "private_annotations_included": false,
+    "provider_traces_included": false,
+    "request_ids_included": false,
+    "source_pdfs_included": false
+  },
+  "processing": {
+    "blocks_failed": 0,
+    "blocks_resumed": 0,
+    "blocks_succeeded": 1,
+    "blocks_total": 1,
+    "review_state": {
+      "reasons": [
+        "candidate_review_required",
+        "zero_valid_eee_records"
+      ],
+      "source": "run_manifest",
+      "status": "needs_review"
+    },
+    "selected_block_count": 1,
+    "selected_page_count": 1,
+    "selected_pages": [
+      7
+    ],
+    "status": "success"
+  },
+  "provenance": {
+    "anchor_count": 0,
+    "anchors": [],
+    "complete": false,
+    "complete_numeric_observations": 0,
+    "numeric_exported_observations": 0,
+    "pages": [],
+    "policy": "quote-free source/page/structure/hash provenance",
+    "quote_hashes_present": false,
+    "source_ids": [],
+    "structure_kind_counts": {}
+  },
+  "quality_gates": [],
+  "reference_evaluation": {
+    "coverage_statement": "No reference targets scored.",
+    "status": "not_measured"
+  },
+  "review": {
+    "aggregate": null,
+    "independent_human_validation": false,
+    "label": "Analyst review",
+    "paper": null,
+    "status": "not_available"
+  },
+  "schema_version": "paper-extraction-review-card/0.1",
+  "source_manifest_sha256": "a2d9902680dd1021b239e659b4f4054284628efcb861d42cf2110721ea304dbb",
+  "sources": [
+    {
+      "git_commit": null,
+      "media_type": "application/pdf",
+      "public_url": "https://example.org/papers/synthetic-review-example.pdf",
+      "retrieved_at": "2026-08-04T10:00:00Z",
+      "role": "paper",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source_id": "src_synthetic_review_example"
+    }
+  ],
+  "split": "development",
+  "statement": "Extraction Review Card; not an Evaluation Card."
+}

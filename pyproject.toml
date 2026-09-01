@@ -1,0 +1,106 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "proceedings-to-eee"
+version = "0.2.0"
+description = "Evidence-bound extraction of reported evaluation results from papers into Every Eval Ever"
+readme = "README.md"
+requires-python = "==3.12.*"
+license = {text = "MIT"}
+authors = [{name = "Aris Hofmann"}]
+dependencies = [
+  "httpx==0.28.1",
+  "jsonschema==4.25.1",
+  "pydantic==2.11.7",
+  "PyYAML==6.0.2",
+  "typer==0.16.1",
+]
+
+[project.scripts]
+proceedings-to-eee = "proceedings_to_eee.cli:app"
+ere = "proceedings_to_eee.cli:app"
+
+[dependency-groups]
+dev = [
+  "hatchling==1.27.0",
+  "pytest==8.4.2",
+  "pytest-cov==6.2.1",
+  "ruff==0.12.12",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/proceedings_to_eee"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/.env.example",
+  "/.gitattributes",
+  "/.gitignore",
+  "/LICENSE",
+  "/PROJECT_CONTRACT.md",
+  "/README.md",
+  "/pyproject.toml",
+  "/uv.lock",
+  "/src",
+  "/schemas/eee-0.2.2/eval.schema.json",
+  "/schemas/eee-0.2.2/LICENSE",
+  "/configs/attribution-cues-v0.yaml",
+  "/docs/architecture.md",
+  "/docs/evaluation-status.md",
+  "/docs/annotation-method.md",
+  "/examples/quickstart",
+]
+
+[tool.hatch.build]
+exclude = [
+  "/.agents",
+  "/.codex",
+  "/.env",
+  "/.env.*",
+  "/.git",
+  "/.pytest_cache",
+  "/.ruff_cache",
+  "/.venv",
+  "/artifacts",
+  "/build",
+  "/cache",
+  "/data",
+  "/dist",
+  "/docs/.Rhistory",
+  "/examples/erster_lauf",
+  "/htmlcov",
+  "/output",
+  "/references",
+  "/runs",
+  "/tmp",
+  "/vault",
+  "**/*.pdf",
+  "**/*.parquet",
+  "**/*.zip",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+markers = ["network: opt-in test that contacts an external service"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/proceedings_to_eee/extraction/prompt.py" = ["E501"]
+"src/proceedings_to_eee/reporting/html.py" = ["E501"]
+# Layout-text fixtures are wide by nature; rewrapping them would destroy the geometry
+# under test.
+"tests/test_region_index.py" = ["E501"]
+"tests/test_attribution.py" = ["E501"]
+"tests/test_block_recovery.py" = ["E501"]
+"tests/test_control_coverage.py" = ["E501"]
+"tests/test_row_coverage.py" = ["E501"]
