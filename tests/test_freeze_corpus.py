@@ -65,7 +65,9 @@ def test_freeze_corpus_continues_after_a_paper_error(
     corpus = CorpusSpec(corpus_id="test-corpus", description="fixture", papers=papers)
     attempted: list[str] = []
 
-    def fake_freeze_paper(paper: PaperSpec, settings: PipelineSettings) -> SourceManifest:
+    def fake_freeze_paper(
+        paper: PaperSpec, settings: PipelineSettings, **_pacing: object
+    ) -> SourceManifest:
         del settings
         attempted.append(paper.paper_id)
         if paper.paper_id == "bravo":
@@ -91,7 +93,7 @@ def test_freeze_corpus_continues_after_a_paper_error(
     assert summary["results"][1] == {
         "paper_id": "bravo",
         "status": "error",
-        "error": {"type": "RuntimeError", "message": "download unavailable"},
+        "error": {"type": "RuntimeError", "message": "runtime operation failed"},
     }
     persisted = json.loads((tmp_path / "run" / "corpus-freeze.json").read_text(encoding="utf-8"))
     assert persisted == summary
@@ -102,7 +104,9 @@ def test_freeze_corpus_preserves_success_manifest_shape(
 ) -> None:
     papers = [_paper("alpha"), _paper("bravo")]
     corpus = CorpusSpec(corpus_id="test-corpus", description="fixture", papers=papers)
-    monkeypatch.setattr(pipeline, "freeze_paper", lambda paper, settings: _manifest(paper))
+    monkeypatch.setattr(
+        pipeline, "freeze_paper", lambda paper, settings, **_pacing: _manifest(paper)
+    )
 
     summary = pipeline.freeze_corpus(corpus, _settings(tmp_path))
 
@@ -137,7 +141,9 @@ def test_freeze_corpus_redacts_bounded_error_diagnostics(
         f"{fake_local_path} " + "x" * 2_000
     )
 
-    def fail_freeze(paper: PaperSpec, settings: PipelineSettings) -> SourceManifest:
+    def fail_freeze(
+        paper: PaperSpec, settings: PipelineSettings, **_pacing: object
+    ) -> SourceManifest:
         del paper, settings
         raise RuntimeError(sensitive)
 
@@ -152,8 +158,7 @@ def test_freeze_corpus_redacts_bounded_error_diagnostics(
     assert "api-secret" not in message
     assert "provider-secret" not in message
     assert "/" + "Users/example" not in message
-    assert "https://example.org/paper.pdf?[REDACTED]" in message
-    assert "[LOCAL_PATH]" in message
+    assert message == "runtime operation failed"
 
 
 def test_freeze_paper_rejects_config_uri_drift(tmp_path: Path) -> None:
@@ -164,6 +169,31 @@ def test_freeze_paper_rejects_config_uri_drift(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="configured source bundle changed"):
         pipeline.freeze_paper(changed, settings)
+
+
+def test_freeze_paper_uses_content_addressed_local_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pdf_path = tmp_path / "input" / "paper.pdf"
+    pdf_path.parent.mkdir()
+    pdf_path.write_bytes(b"%PDF-1.4\nlocal fixture\n")
+    paper = _paper("alpha").model_copy(update={"pdf_url": None, "pdf_path": str(pdf_path)})
+    settings = _settings(tmp_path)
+
+    def remote_download_forbidden(**kwargs):
+        del kwargs
+        raise AssertionError("local PDF must not use the downloader")
+
+    monkeypatch.setattr(pipeline, "download_and_freeze_source", remote_download_forbidden)
+
+    manifest = pipeline.freeze_paper(paper, settings)
+
+    source = manifest.sources[0]
+    assert source.role is SourceRole.PAPER
+    assert source.sha256 is not None
+    assert source.cache_relpath is not None
+    assert (tmp_path / source.cache_relpath).read_bytes() == pdf_path.read_bytes()
+    assert (settings.output_root / "alpha" / "source-manifest.json").is_file()
 
 
 def test_paper_spec_requires_commit_pinned_repository() -> None:
@@ -205,7 +235,7 @@ def test_freeze_corpus_cli_exit_code_reflects_failures(
         "papers_failed": papers_failed,
     }
     monkeypatch.setattr(cli, "load_corpus", lambda path: object())
-    monkeypatch.setattr(cli, "freeze_corpus", lambda corpus, settings: summary)
+    monkeypatch.setattr(cli, "freeze_corpus", lambda corpus, settings, **_options: summary)
 
     result = CliRunner().invoke(
         app,

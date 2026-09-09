@@ -121,7 +121,7 @@ def test_render_corpus_html_rejects_impossible_counts() -> None:
         )
 
 
-def test_render_corpus_html_uses_successful_telemetry_including_resumed_calls() -> None:
+def test_render_corpus_html_uses_completed_telemetry_including_resumed_calls() -> None:
     report = render_corpus_html(
         {
             "corpus_id": "resumed-cost",
@@ -132,7 +132,7 @@ def test_render_corpus_html_uses_successful_telemetry_including_resumed_calls() 
                     "extractor": {
                         "calls": [],
                         "resumed_calls": [{"cost_usd": 99}],
-                        "successful_call_telemetry": {
+                        "completed_call_telemetry": {
                             "calls": 3,
                             "cost_usd_lower_bound": 0.123456,
                             "total_tokens_lower_bound": 4567,
@@ -146,9 +146,50 @@ def test_render_corpus_html_uses_successful_telemetry_including_resumed_calls() 
     )
 
     assert "<span>Cost</span><strong>$0.1235</strong>" in report
-    assert "<span>Successful calls</span>" in report
+    assert "<span>Completed calls</span>" in report
     assert "<strong>3</strong>" in report
     assert "<span>Tokens</span><strong>4,567+</strong>" in report
     assert "<span>Retries / failed blocks</span>" in report
     assert "<strong>2 / 1</strong>" in report
     assert "<span>Resumed blocks</span>" in report
+
+
+def test_render_corpus_html_counts_completed_calls_across_all_five_stages() -> None:
+    stages = (
+        "extractor",
+        "row_enumeration",
+        "tuple_resolution",
+        "verifier",
+        "origin_retrieval",
+    )
+    run: dict[str, object] = {"paper_id": "five-stage-cost", "counts": {}}
+    for index, stage_name in enumerate(stages, start=1):
+        run[stage_name] = {
+            "successful_call_telemetry": {
+                "calls": 1 if stage_name in {"extractor", "verifier"} else 0,
+                "cost_usd_lower_bound": (
+                    float(index) if stage_name in {"extractor", "verifier"} else 0.0
+                ),
+                "total_tokens_lower_bound": index * 10,
+                "retries_lower_bound": 0,
+            },
+            "completed_call_telemetry": {
+                "calls": 1,
+                "cost_usd_lower_bound": float(index),
+                "total_tokens_lower_bound": index * 100,
+                "retries_lower_bound": 1 if stage_name == "row_enumeration" else 0,
+            },
+        }
+    cast_extractor = run["extractor"]
+    assert isinstance(cast_extractor, dict)
+    cast_extractor["execution"] = {"blocks_failed": 0, "blocks_resumed": 0}
+
+    report = render_corpus_html({"corpus_id": "all-stages", "runs": [run]})
+
+    # Extractor + verifier alone would report $1 + $4 = $5. Completed five-stage
+    # accounting includes the paid row call even though it had no successful response.
+    assert "<span>Cost</span><strong>$15.0000</strong>" in report
+    assert "<span>Completed calls</span>" in report
+    assert "<strong>5</strong>" in report
+    assert "<span>Tokens</span><strong>1,500+</strong>" in report
+    assert "<strong>1 / 0</strong>" in report

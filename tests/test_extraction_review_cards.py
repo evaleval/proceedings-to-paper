@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from proceedings_to_eee.cli import app
 from proceedings_to_eee.composition.eee import compose_eee_records
+from proceedings_to_eee.domain.export_provenance import legacy_export_provenance
 from proceedings_to_eee.domain.observation import CandidateObservation
 from proceedings_to_eee.evaluation.human_review import build_human_review_template
 from proceedings_to_eee.io import read_json, sha256_file, write_json
@@ -230,10 +231,14 @@ def _write_paper(
             raise ValueError("with_eee requires one exported fixture candidate")
         eee_root = paper_root / "eee"
         eee_root.mkdir()
+        candidate_model = CandidateObservation.model_validate(candidate)
         records = compose_eee_records(
             manifest=SourceManifest.model_validate(_manifest(paper_id, title)),
-            candidates=[CandidateObservation.model_validate(candidate)],
+            candidates=[candidate_model],
             schema_version=PINNED_EEE_SCHEMA_VERSION,
+            provenance=legacy_export_provenance(
+                [candidate_model], reason="review_card_fixture_manual_composition"
+            ),
         )
         if len(records) != 1:
             raise AssertionError("fixture must compose exactly one EEE record")

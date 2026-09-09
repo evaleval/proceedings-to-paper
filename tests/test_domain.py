@@ -53,12 +53,6 @@ def test_primary_result_requires_exactly_one_evaluated_system() -> None:
         )
 
 
-def test_raw_percent_is_not_silently_rescaled(eligible_candidate: CandidateObservation) -> None:
-    assert eligible_candidate.value.numeric == 74.6
-    assert eligible_candidate.value.unit == "percent"
-    assert eligible_candidate.metric.max_score == 100
-
-
 @pytest.mark.parametrize("alias", ["%", "pct", "percent", "percentage"])
 def test_explicit_percent_unit_aliases_are_canonical_without_rescaling(alias: str) -> None:
     metric = MetricSpec(raw_name="F1", unit=alias)

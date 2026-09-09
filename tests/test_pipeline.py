@@ -18,22 +18,44 @@ from proceedings_to_eee.corpus import CorpusSpec, PaperSpec
 from proceedings_to_eee.domain.attribution import AttributionState, AttributionVerdict
 from proceedings_to_eee.domain.observation import MetricSpec, ObservationScope, ReportedValue
 from proceedings_to_eee.domain.status import ActorRole, ClaimType, EvidenceKind
+from proceedings_to_eee.evaluation.control_coverage import (
+    control_examination as compute_control_examination,
+)
+from proceedings_to_eee.evaluation.control_coverage import (
+    observation_examination as compute_observation_examination,
+)
 from proceedings_to_eee.extraction.llm import extractor_request_contract
 from proceedings_to_eee.extraction.pdf_layout import PageFragment, PdfLayout
 from proceedings_to_eee.extraction.result_blocks import segment_page_result_blocks
 from proceedings_to_eee.extraction.row_enumeration import RowEnumerationPlan
-from proceedings_to_eee.io import read_json, write_json
+from proceedings_to_eee.io import canonical_json_bytes, read_json, sha256_bytes, write_json
 from proceedings_to_eee.pipeline import (
     PipelineSettings,
+    _bounded_paper_summary,
+    _candidate_validation_run_configuration,
     _code_state,
+    _corpus_operational_metrics,
+    _extractor_run_configuration,
+    _origin_run_configuration,
+    _row_enumeration_run_configuration,
+    _tuple_run_configuration,
     _validated_row_checkpoint_entry,
+    _verifier_run_configuration,
     run_corpus,
     run_paper,
 )
+from proceedings_to_eee.providers.budget import (
+    BudgetedProviderClient,
+    ProviderBudgetExhausted,
+    ProviderBudgetLimits,
+    provider_budget_contract,
+)
 from proceedings_to_eee.providers.openrouter import (
     ProviderCall,
+    ProviderRequestRejectedError,
     ProviderResponseValidationError,
     StructuredResponse,
+    completion_token_parameter_for_model,
     structured_request_contract,
 )
 from proceedings_to_eee.reference import (
@@ -48,7 +70,10 @@ from proceedings_to_eee.reporting.extraction_review_cards import (
     build_paper_extraction_review_card,
 )
 from proceedings_to_eee.sources.manifest import FrozenSource, SourceManifest, SourceRole
-from proceedings_to_eee.verification.independent import verifier_request_contract
+from proceedings_to_eee.verification.independent import (
+    VERIFIER_SCHEMA_NAME,
+    verifier_request_contract,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,12 +95,174 @@ def _settings(tmp_path: Path) -> PipelineSettings:
         schema_path=PROJECT_ROOT / "schemas" / "eee-0.2.2" / "eval.schema.json",
         schema_sha256="088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
         output_root=tmp_path / "runs",
-        model="extractor",
+        model="fixture/extractor",
     )
 
 
-def test_pipeline_settings_default_to_reproducible_extractor_seed(tmp_path: Path) -> None:
-    assert _settings(tmp_path).seed == 7
+def test_pipeline_settings_default_to_common_capability_controls(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    assert settings.temperature is None
+    assert settings.reasoning_effort == "minimal"
+    assert settings.seed is None
+
+
+def test_all_enabled_stage_manifests_bind_materialized_openai_token_field(
+    tmp_path: Path,
+) -> None:
+    settings = replace(
+        _settings(tmp_path),
+        model="openai/gpt-5.5",
+        row_enumeration_enabled=True,
+        row_model="openai/gpt-5.5",
+        tuple_model="openai/gpt-5.5",
+        verifier_model="openai/gpt-5.5",
+        origin_model="openai/gpt-5.5",
+    )
+    stages = (
+        (_extractor_run_configuration(settings), settings.max_tokens),
+        (_row_enumeration_run_configuration(settings), settings.max_tokens),
+        (_tuple_run_configuration(settings), settings.tuple_max_tokens),
+        (_verifier_run_configuration(settings), settings.verifier_max_tokens),
+        (_origin_run_configuration(settings), settings.origin_max_tokens),
+    )
+
+    for stage, max_tokens in stages:
+        contract = stage["request_contract"]
+        assert contract["schema_version"] == "provider-request-contract/0.2"
+        assert contract["max_tokens"] == max_tokens
+        assert contract["completion_token_parameter"] == "max_completion_tokens"
+
+
+def test_candidate_validation_policy_is_versioned_and_budget_bound(tmp_path: Path) -> None:
+    settings = replace(_settings(tmp_path), min_confidence=0.61)
+
+    policy = _candidate_validation_run_configuration(settings)
+    assert policy == {
+        "schema_version": "candidate-validation/0.2",
+        "min_confidence": 0.61,
+        "origin_policy": "positive_only",
+    }
+
+    limits = ProviderBudgetLimits(
+        max_structured_calls=2,
+        max_cost_usd=2.0,
+        cost_reservation_per_call_usd=0.5,
+    )
+    corpus_binding = {
+        "schema_version": "fixture/0.1",
+        "corpus_id": "fixture",
+    }
+    first = provider_budget_contract(
+        corpus_binding=corpus_binding,
+        provider_run_contract={"candidate_validation": policy},
+        limits=limits,
+    )
+    second = provider_budget_contract(
+        corpus_binding=corpus_binding,
+        provider_run_contract={
+            "candidate_validation": _candidate_validation_run_configuration(
+                replace(settings, min_confidence=0.8)
+            )
+        },
+        limits=limits,
+    )
+    assert first["provider_run_contract_sha256"] != second["provider_run_contract_sha256"]
+
+
+def test_bounded_paper_manifest_persists_candidate_validation_policy(tmp_path: Path) -> None:
+    settings = replace(_settings(tmp_path), min_confidence=0.61)
+    error = ProviderBudgetExhausted(
+        reason="structured_call_limit",
+        summary={"structured_calls_started": 2},
+    )
+
+    summary = _bounded_paper_summary(
+        paper=_paper("bounded"),
+        settings=settings,
+        schema_version="0.2.2",
+        schema_sha256="a" * 64,
+        code_state={"git_commit": "uncommitted", "git_dirty": False, "git_available": False},
+        block_config={"max_blocks_per_page": 6},
+        error=error,
+        started=0.0,
+    )
+
+    assert summary["candidate_validation"] == {
+        "schema_version": "candidate-validation/0.2",
+        "min_confidence": 0.61,
+        "origin_policy": "positive_only",
+    }
+
+
+def test_corpus_operations_preserve_stage_usage_completeness_denominators() -> None:
+    telemetry = {
+        "calls": 2,
+        "cost_usd_lower_bound": 0.3,
+        "cost_reported_calls": 1,
+        "input_tokens_lower_bound": 11,
+        "input_tokens_reported_calls": 1,
+        "output_tokens_lower_bound": 7,
+        "output_tokens_reported_calls": 2,
+        "total_tokens_lower_bound": 18,
+        "total_tokens_reported_calls": 1,
+        "latency_seconds_total": 0.6,
+        "latency_seconds_max": 0.4,
+        "attempts_lower_bound": 3,
+        "retries_lower_bound": 1,
+    }
+    summary = {
+        "extractor": {
+            "successful_call_telemetry": telemetry,
+            "execution": {},
+        },
+        "row_enumeration": {
+            "successful_call_telemetry": telemetry,
+            "execution": {},
+            "plan": {},
+        },
+        "tuple_resolution": {
+            "completed_call_telemetry": telemetry,
+            "execution": {
+                "candidates_selected": 3,
+                "candidates_passed": 2,
+                "candidates_routed_to_review": 1,
+                "candidates_resumed": 1,
+            },
+        },
+        "verifier": {
+            "completed_call_telemetry": telemetry,
+            "execution": {
+                "candidates_verified": 2,
+                "candidates_failed": 1,
+                "candidates_resumed": 1,
+                "candidates_executed": 1,
+            },
+        },
+        "origin_retrieval": {
+            "completed_call_telemetry": telemetry,
+            "execution": {
+                "candidates_selected": 2,
+                "candidates_resumed": 1,
+                "candidates_failed": 0,
+            },
+        },
+    }
+
+    operations = _corpus_operational_metrics([summary], wall_clock_seconds=1.0)
+
+    for stage_name in ("row_enumeration", "tuple_resolution", "verifier", "origin_retrieval"):
+        stage = operations[stage_name]
+        assert stage["calls"] == 2
+        assert stage["cost_reported_calls"] == 1
+        assert stage["input_tokens_reported_calls"] == 1
+        assert stage["output_tokens_reported_calls"] == 2
+        assert stage["total_tokens_reported_calls"] == 1
+        assert stage["attempts_lower_bound"] == 3
+        assert stage["retries_lower_bound"] == 1
+    assert operations["verifier"]["candidates_verified"] == 2
+    assert operations["verifier"]["candidates_failed"] == 1
+    assert operations["verifier"]["candidates_resumed"] == 1
+    assert operations["verifier"]["candidates_executed"] == 1
 
 
 def test_code_state_ignores_runtime_bytecode_but_hashes_semantic_sources(tmp_path: Path) -> None:
@@ -210,19 +397,31 @@ def test_run_corpus_aggregates_errors_without_aborting(monkeypatch, tmp_path: Pa
     assert "secret-token" not in error["message"]
     assert "sk" + "-or-example" not in error["message"]
     assert "also-secret" not in error["message"]
-    assert "[REDACTED]" in error["message"]
+    assert error["message"] == "runtime operation failed"
 
     saved = json.loads((tmp_path / "runs" / "corpus-run.json").read_text())
     assert saved["papers_failed"] == 1
     failed_run = json.loads((tmp_path / "runs" / "second" / "run.json").read_text())
     assert failed_run["status"] == "error"
+    assert failed_run["candidate_validation"] == {
+        "schema_version": "candidate-validation/0.2",
+        "min_confidence": 0.8,
+        "origin_policy": "positive_only",
+    }
     assert (tmp_path / "runs" / "second" / "observations.jsonl").read_text() == ""
     assert (tmp_path / "runs" / "second" / "verifications.jsonl").read_text() == ""
     assert json.loads((tmp_path / "runs" / "second" / "spot-checks.json").read_text()) == []
-    assert failed_run["extractor"]["seed"] == 7
-    assert failed_run["extractor"]["request_contract"] == extractor_request_contract(seed=7)
+    assert failed_run["extractor"]["seed"] is None
+    assert failed_run["extractor"]["request_contract"] == extractor_request_contract(
+        seed=None,
+        model=_settings(tmp_path).model,
+        max_tokens=_settings(tmp_path).max_tokens,
+    )
     assert failed_run["verifier"]["enabled"] is False
-    assert failed_run["verifier"]["seed"] == 7
+    assert failed_run["verifier"]["seed"] is None
+    assert failed_run["verifier"]["temperature"] is None
+    assert failed_run["verifier"]["reasoning_effort"] == "minimal"
+    assert failed_run["verifier"]["require_parameters"] is True
     assert failed_run["verifier"]["request_contract"] == verifier_request_contract()
     assert failed_run["eee_schema"] == {
         "version": "0.2.2",
@@ -238,6 +437,63 @@ def test_run_corpus_aggregates_errors_without_aborting(monkeypatch, tmp_path: Pa
     report = (tmp_path / "runs" / "corpus-review.html").read_text()
     assert "resilient · 2 papers" in report
     assert "Run failed" in report
+
+
+def test_paper_error_preserves_completed_checkpointed_call_accounting(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    paper = _paper("paid-then-failed")
+    corpus = CorpusSpec(corpus_id="paid-error", description="fixture", papers=[paper])
+    settings = _settings(tmp_path)
+
+    def fail_after_checkpointed_call(*, spec: PaperSpec, settings: PipelineSettings, client: Any):
+        response = client.structured_chat(
+            model=settings.model,
+            system="fixture system",
+            user="fixture user",
+            schema_name="fixture_error_accounting",
+            schema={"type": "object", "properties": {}, "additionalProperties": False},
+            temperature=settings.temperature,
+            reasoning_effort=settings.reasoning_effort,
+            max_tokens=settings.max_tokens,
+            seed=settings.seed,
+            require_parameters=False,
+        )
+        contract = {"paper_id": spec.paper_id, "stage": "verifier"}
+        entry = {
+            "schema_version": "independent-verifier-checkpoint-entry/0.4",
+            "status": "success",
+            "provider_call": response.call.model_dump(mode="json"),
+        }
+        entry["entry_sha256"] = sha256_bytes(canonical_json_bytes(entry))
+        write_json(
+            settings.output_root / spec.paper_id / "private" / "verifier-checkpoint.json",
+            {
+                "schema_version": "independent-verifier-checkpoint/0.4",
+                "contract": contract,
+                "contract_sha256": sha256_bytes(canonical_json_bytes(contract)),
+                "candidates": {"candidate": entry},
+            },
+        )
+        raise RuntimeError("failure after durable paid call")
+
+    monkeypatch.setattr("proceedings_to_eee.pipeline.run_paper", fail_after_checkpointed_call)
+
+    result = run_corpus(corpus=corpus, settings=settings, client=_EndToEndClient())
+
+    failed = result["runs"][0]
+    assert failed["status"] == "error"
+    assert failed["provider_budget"]["structured_calls_completed"] == 1
+    assert failed["failure_provider_accounting"]["checkpointed_completed_calls"] == 1
+    assert failed["failure_provider_accounting"]["checkpoint_parse_complete"] is True
+    assert failed["verifier"]["completed_call_telemetry"]["calls"] == 1
+    assert failed["verifier"]["completed_call_telemetry"]["cost_usd_lower_bound"] == 0.001
+    assert len(failed["verifier"]["calls"]) == 1
+    assert "request_id" not in failed["verifier"]["calls"][0]
+    assert result["operations"]["verifier"]["calls"] == 1
+    assert result["operations"]["verifier"]["cost_usd_lower_bound"] == 0.001
+    assert result["provider_budget"]["structured_calls_completed"] == 1
 
 
 class _EndToEndClient:
@@ -276,7 +532,7 @@ class _EndToEndClient:
                         "raw_name": "AUC",
                         "canonical_id": None,
                         "kind": None,
-                        "unit": "proportion",
+                        "unit": None,
                         "lower_is_better": None,
                         "min_score": None,
                         "max_score": None,
@@ -285,7 +541,7 @@ class _EndToEndClient:
                     "value": {
                         "raw": "0.80",
                         "numeric": 0.8,
-                        "unit": "proportion",
+                        "unit": None,
                         "comparator": "exact",
                         "uncertainty": None,
                     },
@@ -293,10 +549,24 @@ class _EndToEndClient:
                         {
                             "kind": "table",
                             "label": "Table 1",
-                            "row": "System A",
+                            "row": "System A (Dataset A AUC)",
                             "column": "AUC",
-                            "quote": "System A                 0.80",
-                        }
+                            "quote": "System A (Dataset A AUC)  0.80",
+                        },
+                        {
+                            "kind": "table",
+                            "label": "Table 1",
+                            "row": None,
+                            "column": "AUC",
+                            "quote": "Table 1: AUC on Dataset A",
+                        },
+                        {
+                            "kind": "prose",
+                            "label": None,
+                            "row": None,
+                            "column": None,
+                            "quote": "System A (Dataset A AUC)  0.80",
+                        },
                     ],
                     "extraction_confidence": 0.99,
                     "construct": None,
@@ -309,7 +579,16 @@ class _EndToEndClient:
             "page_summary": "one result",
             "warnings": [],
         }
-        digest = hashlib.sha256(kwargs["user"].encode()).hexdigest()
+        digest = hashlib.sha256(
+            json.dumps(
+                [
+                    {"role": "system", "content": kwargs["system"]},
+                    {"role": "user", "content": kwargs["user"]},
+                ],
+                sort_keys=True,
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
         contract = structured_request_contract(
             schema_name=kwargs["schema_name"],
             schema=kwargs["schema"],
@@ -330,11 +609,13 @@ class _EndToEndClient:
                 temperature=kwargs["temperature"],
                 reasoning_effort=kwargs["reasoning_effort"],
                 max_tokens=kwargs["max_tokens"],
+                completion_token_parameter=completion_token_parameter_for_model(kwargs["model"]),
                 seed=contract["seed"],
                 response_format=schema_contract["response_format"],
                 schema_name=schema_contract["schema_name"],
                 schema_sha256=schema_contract["schema_sha256"],
                 schema_strict=schema_contract["schema_strict"],
+                require_parameters=kwargs.get("require_parameters", False),
                 latency_seconds=0.01,
                 input_tokens=100,
                 output_tokens=50,
@@ -375,6 +656,12 @@ class _EndToEndRowClient(_EndToEndClient):
         row_ids = re.findall(r'"row_id": "(trow_[0-9a-f]+)"', kwargs["user"])
         assert len(row_ids) == 2
         observation = response.payload["observations"][0]
+        observation = {
+            **observation,
+            # Row extraction is constrained to exact text from this one row; the
+            # structural row/header plan supplies the surrounding table context.
+            "evidence": [{**observation["evidence"][0], "kind": "table"}],
+        }
         payload = {
             "dispositions": [
                 {
@@ -405,6 +692,190 @@ class _EndToEndRowClient(_EndToEndClient):
         )
 
 
+class _NoCallRowFailureClient(_EndToEndClient):
+    """Fail every row attempt before a completed provider response exists."""
+
+    def __init__(self, failure: str) -> None:
+        super().__init__()
+        self.failure = failure
+
+    def structured_chat(self, **kwargs: Any) -> StructuredResponse:
+        if kwargs["schema_name"] != "paper_table_row_dispositions":
+            return super().structured_chat(**kwargs)
+        self.requests.append(kwargs)
+        if self.failure == "request_rejected":
+            raise ProviderRequestRejectedError(status_code=400)
+        raise RuntimeError("fixture transport failure")
+
+
+class _RecoveringRowClient(_EndToEndClient):
+    """Force one two-row base miss followed by valid singleton recoveries."""
+
+    def structured_chat(self, **kwargs: Any) -> StructuredResponse:
+        response = super().structured_chat(**kwargs)
+        if kwargs["schema_name"] != "paper_table_row_dispositions":
+            return response
+        row_ids = re.findall(r'"row_id": "(trow_[0-9a-f]+)"', kwargs["user"])
+        assert row_ids
+        payload = {
+            "dispositions": (
+                []
+                if len(row_ids) > 1
+                else [
+                    {
+                        "row_id": row_ids[0],
+                        "disposition": "not_result",
+                        "observations": [],
+                        "note": "singleton recovery",
+                    }
+                ]
+            ),
+            "warnings": [],
+        }
+        return replace(
+            response,
+            payload=payload,
+            call=response.call.model_copy(
+                update={
+                    "response_sha256": hashlib.sha256(
+                        json.dumps(payload, sort_keys=True).encode()
+                    ).hexdigest()
+                }
+            ),
+        )
+
+
+class _ResponseFailureRecoveringRowClient(_EndToEndClient):
+    """Return one paid invalid base response followed by valid singleton recoveries."""
+
+    def structured_chat(self, **kwargs: Any) -> StructuredResponse:
+        response = super().structured_chat(**kwargs)
+        if kwargs["schema_name"] != "paper_table_row_dispositions":
+            return response
+        row_ids = re.findall(r'"row_id": "(trow_[0-9a-f]+)"', kwargs["user"])
+        assert row_ids
+        payload: dict[str, Any] = (
+            {"dispositions": "invalid", "warnings": []}
+            if len(row_ids) > 1
+            else {
+                "dispositions": [
+                    {
+                        "row_id": row_ids[0],
+                        "disposition": "not_result",
+                        "observations": [],
+                        "note": "singleton recovery",
+                    }
+                ],
+                "warnings": [],
+            }
+        )
+        return replace(
+            response,
+            payload=payload,
+            call=response.call.model_copy(
+                update={
+                    "response_sha256": hashlib.sha256(
+                        json.dumps(payload, sort_keys=True).encode()
+                    ).hexdigest()
+                }
+            ),
+        )
+
+
+class _TrailingNoCallRecoveringRowClient(_RecoveringRowClient):
+    """Complete a base and first child, then fail the final child before a call."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.row_requests = 0
+
+    def structured_chat(self, **kwargs: Any) -> StructuredResponse:
+        if kwargs["schema_name"] == "paper_table_row_dispositions":
+            self.row_requests += 1
+            if self.row_requests == 3:
+                self.requests.append(kwargs)
+                raise RuntimeError("fixture transport failure")
+        return super().structured_chat(**kwargs)
+
+
+class _VerifierAcceptClient(_EndToEndClient):
+    def structured_chat(self, **kwargs: Any) -> StructuredResponse:
+        response = super().structured_chat(**kwargs)
+        if kwargs["schema_name"] != VERIFIER_SCHEMA_NAME:
+            return response
+        raw = (
+            kwargs["user"]
+            .split("<VERIFICATION_INPUT>\n", 1)[1]
+            .split("\n</VERIFICATION_INPUT>", 1)[0]
+        )
+        verifier_input = json.loads(raw)
+        candidate = verifier_input["candidate_claim_untrusted"]
+        anchor = verifier_input["candidate_claimed_anchor_untrusted"]
+        lines = verifier_input["trusted_frozen_source_block"]["lines"]
+
+        def evidence_ids(*claims: object) -> list[str]:
+            selected: list[str] = []
+            for claim in claims:
+                if claim is None or claim == "":
+                    continue
+                match = next(
+                    (
+                        line["line_id"]
+                        for line in lines
+                        if str(claim).casefold() in line["text"].casefold()
+                    ),
+                    None,
+                )
+                if match is not None and match not in selected:
+                    selected.append(match)
+            return selected
+
+        scope = candidate["scope"] or {}
+        metric = candidate["metric"] or {}
+        value = candidate["value"] or {}
+        payload = {
+            "support": "supported",
+            "support_evidence_line_ids": evidence_ids(anchor["quote"]),
+            "role": "supported",
+            "role_evidence_line_ids": evidence_ids(
+                *(role["raw_name"] for role in candidate["roles"])
+            ),
+            "scope": "supported",
+            "scope_evidence_line_ids": evidence_ids(
+                scope.get("dataset_raw"),
+                scope.get("dataset_version"),
+                scope.get("split"),
+                scope.get("subset"),
+                scope.get("group"),
+                scope.get("language"),
+                scope.get("sample_count"),
+                scope.get("aggregation"),
+                scope.get("raw_scope"),
+            ),
+            "value": "supported",
+            "value_evidence_line_ids": evidence_ids(value.get("raw"), value.get("unit")),
+            "metric": "supported",
+            "metric_evidence_line_ids": evidence_ids(
+                metric.get("raw_name"),
+                metric.get("unit"),
+                *(metric.get("parameters") or {}).values(),
+            ),
+            "decision": "accept",
+            "justification": "Every candidate field is supported by the frozen block.",
+        }
+        return replace(
+            response,
+            payload=payload,
+            call=response.call.model_copy(
+                update={
+                    "response_sha256": hashlib.sha256(
+                        json.dumps(payload, sort_keys=True).encode()
+                    ).hexdigest()
+                }
+            ),
+        )
+
+
 class _FailFirstValidationClient:
     def __init__(self, fail_on: set[int] | None = None) -> None:
         self.requests: list[dict[str, Any]] = []
@@ -417,6 +888,36 @@ class _FailFirstValidationClient:
         if len(self.requests) in self.fail_on:
             raise ProviderResponseValidationError(call=response.call, code="invalid_json")
         return response
+
+
+def _budgeted_pipeline_client(
+    tmp_path: Path,
+    raw_client: Any,
+    *,
+    calls: int,
+) -> BudgetedProviderClient:
+    limits = ProviderBudgetLimits(
+        max_structured_calls=calls,
+        max_cost_usd=10.0,
+        cost_reservation_per_call_usd=0.01,
+    )
+    contract = provider_budget_contract(
+        corpus_binding={
+            "schema_version": "pipeline-budget-fixture/0.1",
+            "corpus_id": "pipeline-budget-fixture",
+            "evaluation_split": "development",
+            "corpus_spec_sha256": "a" * 64,
+            "paper_ids_sha256": "b" * 64,
+        },
+        provider_run_contract={"model": "fixture/model", "seed": 19},
+        limits=limits,
+    )
+    return BudgetedProviderClient(
+        client=raw_client,
+        ledger_path=tmp_path / "private" / "provider-budget-ledger.jsonl",
+        contract=contract,
+        limits=limits,
+    )
 
 
 def _end_to_end_fixture(monkeypatch, tmp_path: Path) -> tuple[PaperSpec, PipelineSettings]:
@@ -450,8 +951,8 @@ def _end_to_end_fixture(monkeypatch, tmp_path: Path) -> tuple[PaperSpec, Pipelin
     page_text = """Results
 Table 1: AUC on Dataset A
 System                    AUC
-System A                 0.80
-System B                 0.70
+System A (Dataset A AUC)  0.80
+System B (Dataset A AUC)  0.70
 """
     layout = PdfLayout(
         source_id=source_id,
@@ -491,9 +992,9 @@ System B                 0.70
                 page=1,
                 kind=EvidenceKind.TABLE,
                 label="Table 1",
-                row="System A",
+                row="System A (Dataset A AUC)",
                 column="AUC",
-                exact_quote="System A                 0.80",
+                exact_quote="System A (Dataset A AUC)  0.80",
             )
         ],
         observations=[
@@ -542,6 +1043,26 @@ System B                 0.70
     return spec, settings
 
 
+def test_programmatic_origin_configuration_fails_before_source_work(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(settings, origin_model="fixture/origin", verifier_model=None)
+    source_work_started = False
+
+    def forbidden_freeze(*args: Any, **kwargs: Any) -> Any:
+        nonlocal source_work_started
+        source_work_started = True
+        raise AssertionError("source work must not start")
+
+    monkeypatch.setattr("proceedings_to_eee.pipeline.freeze_paper", forbidden_freeze)
+
+    with pytest.raises(ValueError, match="origin_model requires verifier_model"):
+        run_paper(spec=spec, settings=settings, client=_NeverCallClient())
+
+    assert source_work_started is False
+
+
 def _trust_current_paper_origin(monkeypatch: pytest.MonkeyPatch) -> None:
     """Install an explicit positive-origin fixture; production v0 never infers this."""
 
@@ -558,6 +1079,7 @@ def test_run_paper_with_explicit_trusted_origin_writes_valid_eee_and_reference_s
     monkeypatch, tmp_path: Path
 ) -> None:
     spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(settings, min_confidence=0.61)
     _trust_current_paper_origin(monkeypatch)
     output_root = settings.output_root
     paper_id = spec.paper_id
@@ -574,9 +1096,23 @@ def test_run_paper_with_explicit_trusted_origin_writes_valid_eee_and_reference_s
     assert result["review_state"] == {"status": "ready", "reasons": []}
     assert len(client.requests) == 1
     assert client.requests[0]["seed"] == 19
-    assert client.requests[0]["require_parameters"] is False
+    assert client.requests[0]["require_parameters"] is True
     assert result["extractor"]["seed"] == 19
-    assert result["extractor"]["request_contract"] == extractor_request_contract(seed=19)
+    assert result["extractor"]["request_contract"] == extractor_request_contract(
+        seed=19,
+        model=settings.model,
+        max_tokens=settings.max_tokens,
+    )
+    assert result["candidate_validation"] == {
+        "schema_version": "candidate-validation/0.2",
+        "min_confidence": 0.61,
+        "origin_policy": "positive_only",
+    }
+    assert read_json(output_root / paper_id / "run.json")["candidate_validation"] == {
+        "schema_version": "candidate-validation/0.2",
+        "min_confidence": 0.61,
+        "origin_policy": "positive_only",
+    }
     assert result["extractor"]["request_contract"]["schema"] == {
         "response_format": "json_schema",
         "schema_name": "paper_evaluation_candidates",
@@ -595,6 +1131,8 @@ def test_run_paper_with_explicit_trusted_origin_writes_valid_eee_and_reference_s
         "input_tokens_reported_calls": 1,
         "output_tokens_lower_bound": 50,
         "output_tokens_reported_calls": 1,
+        "reasoning_tokens_lower_bound": 0,
+        "reasoning_tokens_reported_calls": 0,
         "total_tokens_lower_bound": 150,
         "total_tokens_reported_calls": 1,
         "latency_seconds_total": 0.01,
@@ -604,7 +1142,10 @@ def test_run_paper_with_explicit_trusted_origin_writes_valid_eee_and_reference_s
         "retries_lower_bound": 0,
     }
     assert result["verifier"]["enabled"] is False
-    assert result["verifier"]["seed"] == 7
+    assert result["verifier"]["seed"] is None
+    assert result["verifier"]["temperature"] is None
+    assert result["verifier"]["reasoning_effort"] == "minimal"
+    assert result["verifier"]["require_parameters"] is True
     assert result["verifier"]["request_contract"] == verifier_request_contract()
     eee_files = list((output_root / paper_id / "eee").glob("*.json"))
     assert len(eee_files) == 1
@@ -628,6 +1169,76 @@ def test_run_paper_with_explicit_trusted_origin_writes_valid_eee_and_reference_s
     }
     assert (output_root / paper_id / "reference-score.json").exists()
     assert (output_root / paper_id / "review.html").exists()
+
+
+def test_verifier_requires_tuple_gate_before_any_source_or_provider_work(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(settings, verifier_model="fixture/verifier")
+    client = _VerifierAcceptClient()
+    source_work_started = False
+
+    def forbidden_freeze(*args: Any, **kwargs: Any) -> Any:
+        nonlocal source_work_started
+        source_work_started = True
+        raise AssertionError("source work must not start")
+
+    monkeypatch.setattr("proceedings_to_eee.pipeline.freeze_paper", forbidden_freeze)
+
+    with pytest.raises(ValueError, match="verifier_model requires tuple_model"):
+        run_paper(spec=spec, settings=settings, client=client)
+
+    assert source_work_started is False
+    assert client.requests == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_error"),
+    [
+        ({"model": ""}, "extractor model is required"),
+        (
+            {"row_enumeration_enabled": True, "row_model": 123},
+            "row model must be non-empty when supplied",
+        ),
+        ({"tuple_model": []}, "tuple model must be non-empty when supplied"),
+        (
+            {"tuple_model": "fixture/tuple", "verifier_model": "  "},
+            "verifier model must be non-empty when supplied",
+        ),
+        (
+            {
+                "tuple_model": "fixture/tuple",
+                "verifier_model": "fixture/verifier",
+                "origin_model": 123,
+            },
+            "origin model must be non-empty when supplied",
+        ),
+    ],
+)
+def test_all_enabled_stage_models_are_strictly_validated_before_work(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    overrides: dict[str, Any],
+    expected_error: str,
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(settings, **overrides)
+    client = _EndToEndClient()
+    source_work_started = False
+
+    def forbidden_freeze(*args: Any, **kwargs: Any) -> Any:
+        nonlocal source_work_started
+        source_work_started = True
+        raise AssertionError("source work must not start")
+
+    monkeypatch.setattr("proceedings_to_eee.pipeline.freeze_paper", forbidden_freeze)
+
+    with pytest.raises(ValueError, match=expected_error):
+        run_paper(spec=spec, settings=settings, client=client)
+
+    assert source_work_started is False
+    assert client.requests == []
 
 
 def test_default_v0_keeps_no_signal_candidate_in_review_without_canonical_eee(
@@ -658,7 +1269,9 @@ def test_opt_in_row_stage_is_bounded_deduplicated_and_checkpointed(
     spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
     settings = replace(
         settings,
+        seed=None,
         row_enumeration_enabled=True,
+        row_model="fixture/row-model",
         row_estimated_call_cost_usd=0.001,
     )
     client = _EndToEndRowClient()
@@ -666,6 +1279,11 @@ def test_opt_in_row_stage_is_bounded_deduplicated_and_checkpointed(
     first = run_paper(spec=spec, settings=settings, client=client)
 
     assert len(client.requests) == 2
+    assert [request["model"] for request in client.requests] == [
+        "fixture/model",
+        "fixture/row-model",
+    ]
+    assert first["row_enumeration"]["model"] == "fixture/row-model"
     assert first["row_enumeration"]["plan"] == {
         "tables_considered": 1,
         "dense_tables": 1,
@@ -685,6 +1303,8 @@ def test_opt_in_row_stage_is_bounded_deduplicated_and_checkpointed(
         "not_result": 1,
         "uncertain": 0,
     }
+    assert first["row_enumeration"]["successful_call_telemetry"]["calls"] == 1
+    assert first["row_enumeration"]["completed_call_telemetry"]["calls"] == 1
     assert first["counts"]["candidates_before_deduplication"] == 2
     assert first["counts"]["duplicates_removed"] == 1
     assert first["counts"]["candidates"] == 1
@@ -693,25 +1313,105 @@ def test_opt_in_row_stage_is_bounded_deduplicated_and_checkpointed(
     assert (private / "row-enumeration-preflight.json").is_file()
     assert (private / "row-enumeration-checkpoint.json").is_file()
     assert (private / "row-enumeration.json").is_file()
+    assert (private / "row-terminal-states.json").is_file()
+    lineage_path = settings.output_root / spec.paper_id / "candidate-lineage.json"
+    lineage = read_json(lineage_path)
+    assert lineage["schema_version"] == "candidate-lineage/0.1"
+    assert lineage["counts"] == {
+        "proposals": 2,
+        "candidate_occurrences": 2,
+        "final_candidates": 1,
+        "singleton_candidates": 0,
+        "merged_candidates": 1,
+        "exported": 0,
+        "needs_review": 1,
+        "not_eligible": 0,
+        "invalid_eee": 0,
+        "eligible_no_eee": 0,
+    }
+    assert lineage["candidates"][0]["merge_kind"] == "physical_cell"
+    assert '"quote":' not in lineage_path.read_text(encoding="utf-8")
+    assert (settings.output_root / spec.paper_id / "source-processing.json").is_file()
+    assert first["row_enumeration"]["terminal_states"]["counts"] == {
+        "planned": 2,
+        "result": 1,
+        "not_result": 1,
+        "uncertain": 0,
+        "unresolved": 0,
+        "unsupported": 0,
+    }
+    operational = read_json(private / "row-enumeration.json")
+    assert operational["schema_version"] == "row-enumeration-outcome/0.3"
+    assert "records" not in operational
 
     plan = RowEnumerationPlan.model_validate(read_json(private / "row-enumeration-plan.json"))
     checkpoint = read_json(private / "row-enumeration-checkpoint.json")
     batch = plan.batches[0]
     entry = checkpoint["batches"][batch.batch_id]
-    assert _validated_row_checkpoint_entry(entry, batch=batch) is not None
+    private_call = entry["calls"][0]
+    assert private_call["temperature"] is None
+    assert private_call["seed"] is None
+    assert private_call["reasoning_tokens"] is None
+    assert (
+        _validated_row_checkpoint_entry(
+            entry,
+            batch=batch,
+            contract=checkpoint["contract"],
+        )
+        is not None
+    )
     incomplete_entry = json.loads(json.dumps(entry))
     incomplete_entry["records"].pop(batch.rows[-1].row_id)
-    assert _validated_row_checkpoint_entry(incomplete_entry, batch=batch) is None
+    assert (
+        _validated_row_checkpoint_entry(
+            incomplete_entry,
+            batch=batch,
+            contract=checkpoint["contract"],
+        )
+        is None
+    )
+    poisoned_entry = json.loads(json.dumps(entry))
+    result_row_id = next(
+        row_id
+        for row_id, record in poisoned_entry["records"].items()
+        if record["disposition"] == "result"
+    )
+    sibling = next(row for row in batch.rows if row.row_id != result_row_id)
+    poisoned_candidate = poisoned_entry["records"][result_row_id]["candidates"][0]
+    poisoned_candidate["evidence"][0]["planned_row_id"] = sibling.row_id
+    poisoned_candidate["evidence"][0]["region_id"] = sibling.region_id
+    assert (
+        _validated_row_checkpoint_entry(
+            poisoned_entry,
+            batch=batch,
+            contract=checkpoint["contract"],
+        )
+        is None
+    )
+    telemetry_drift = json.loads(json.dumps(entry))
+    telemetry_drift["calls"] = []
+    assert (
+        _validated_row_checkpoint_entry(
+            telemetry_drift,
+            batch=batch,
+            contract=checkpoint["contract"],
+        )
+        is None
+    )
 
     second = run_paper(spec=spec, settings=settings, client=_NeverCallClient())
 
     assert second["extractor"]["execution"]["blocks_resumed"] == 1
     assert second["row_enumeration"]["execution"]["batches_resumed"] == 1
     assert second["counts"]["duplicates_removed"] == 1
+    resumed_public_call = second["row_enumeration"]["calls"][0]
+    assert resumed_public_call["temperature"] is None
+    assert resumed_public_call["seed"] is None
+    assert resumed_public_call["reasoning_tokens"] is None
 
     disabled = run_paper(
         spec=spec,
-        settings=replace(settings, row_enumeration_enabled=False),
+        settings=replace(settings, row_enumeration_enabled=False, row_model=None),
         client=_NeverCallClient(),
     )
 
@@ -722,7 +1422,207 @@ def test_opt_in_row_stage_is_bounded_deduplicated_and_checkpointed(
     assert (private / "row-enumeration-checkpoint.json").is_file()
 
 
-def test_row_checkpoint_survives_unrelated_code_state_change(
+def test_row_manifest_separates_response_valid_from_all_completed_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(
+        settings,
+        row_enumeration_enabled=True,
+        row_model="fixture/row-model",
+        row_estimated_call_cost_usd=0.001,
+    )
+    client = _ResponseFailureRecoveringRowClient()
+
+    result = run_paper(spec=spec, settings=settings, client=client)
+
+    row = result["row_enumeration"]
+    assert [attempt["status"] for attempt in row["attempts"]] == [
+        "provider_response_wire_validation",
+        "success",
+        "success",
+    ]
+    assert len(row["calls"]) == 3
+    assert row["successful_call_telemetry"]["calls"] == 2
+    assert row["successful_call_telemetry"]["cost_usd_lower_bound"] == 0.002
+    assert row["completed_call_telemetry"]["calls"] == 3
+    assert row["completed_call_telemetry"]["cost_usd_lower_bound"] == 0.003
+
+    resumed = run_paper(spec=spec, settings=settings, client=_NeverCallClient())
+    assert resumed["row_enumeration"]["execution"]["batches_resumed"] == 1
+
+
+@pytest.mark.parametrize(
+    ("failure", "ledger_outcome"),
+    [
+        ("transport", "technical_failure"),
+        ("request_rejected", "provider_request_rejected"),
+    ],
+)
+def test_no_call_row_failures_are_typed_then_retried_without_resetting_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: str,
+    ledger_outcome: str,
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(
+        settings,
+        row_enumeration_enabled=True,
+        row_model="fixture/row-model",
+        row_estimated_call_cost_usd=0.001,
+    )
+    first_raw = _NoCallRowFailureClient(failure)
+    first_client = _budgeted_pipeline_client(tmp_path, first_raw, calls=5)
+
+    first = run_paper(spec=spec, settings=settings, client=first_client)
+
+    assert first["status"] == "partial_failure"
+    assert [attempt["status"] for attempt in first["row_enumeration"]["attempts"]] == [
+        "provider_request_failed",
+        "provider_request_failed",
+        "provider_request_failed",
+    ]
+    assert first["row_enumeration"]["completed_call_telemetry"]["calls"] == 0
+    assert first_client.summary["structured_calls_started"] == 4
+    assert first_client.summary["completion_outcomes"][ledger_outcome] == 3
+    checkpoint = read_json(
+        settings.output_root / spec.paper_id / "private" / "row-enumeration-checkpoint.json"
+    )
+    entry = next(iter(checkpoint["batches"].values()))
+    assert entry["calls"] == []
+    assert all(not attempt["completed_provider_call"] for attempt in entry["attempts"])
+
+    resumed_raw = _EndToEndRowClient()
+    resumed_client = _budgeted_pipeline_client(tmp_path, resumed_raw, calls=5)
+    resumed = run_paper(spec=spec, settings=settings, client=resumed_client)
+
+    assert [request["schema_name"] for request in resumed_raw.requests] == [
+        "paper_table_row_dispositions"
+    ]
+    assert resumed["extractor"]["execution"]["blocks_resumed"] == 1
+    assert resumed["row_enumeration"]["execution"]["batches_resumed"] == 0
+    assert resumed["row_enumeration"]["outcome"]["rows_unresolved"] == 0
+    assert resumed_client.summary["structured_calls_started"] == 5
+    assert resumed_client.summary["structured_calls_failed"] == 3
+
+
+def test_trailing_no_call_row_failure_preserves_completed_checkpoint_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(
+        settings,
+        row_enumeration_enabled=True,
+        row_model="fixture/row-model",
+        row_estimated_call_cost_usd=0.001,
+    )
+    first_client = _TrailingNoCallRecoveringRowClient()
+
+    first = run_paper(spec=spec, settings=settings, client=first_client)
+
+    assert first["status"] == "partial_failure"
+    assert [attempt["status"] for attempt in first["row_enumeration"]["attempts"]] == [
+        "partial_invalid",
+        "success",
+        "provider_request_failed",
+    ]
+    completed_calls = first["row_enumeration"]["calls"]
+    assert len(completed_calls) == 2
+
+    resumed_client = _RecoveringRowClient()
+    resumed = run_paper(spec=spec, settings=settings, client=resumed_client)
+
+    row_requests = [
+        request
+        for request in resumed_client.requests
+        if request["schema_name"] == "paper_table_row_dispositions"
+    ]
+    assert len(row_requests) == 1
+    assert resumed["extractor"]["execution"]["blocks_resumed"] == 1
+    assert resumed["row_enumeration"]["execution"]["batches_resumed"] == 0
+    assert [attempt["status"] for attempt in resumed["row_enumeration"]["attempts"]] == [
+        "partial_invalid",
+        "success",
+        "success",
+    ]
+    assert resumed["row_enumeration"]["calls"][:2] == completed_calls
+    assert resumed["row_enumeration"]["outcome"]["rows_unresolved"] == 0
+
+
+def test_budget_stop_mid_row_recovery_resumes_without_repeating_charged_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(
+        settings,
+        row_enumeration_enabled=True,
+        row_model="fixture/row-model",
+        row_estimated_call_cost_usd=0.001,
+    )
+    first_raw = _RecoveringRowClient()
+    first_client = _budgeted_pipeline_client(tmp_path, first_raw, calls=3)
+
+    with pytest.raises(ProviderBudgetExhausted, match="structured_call_limit"):
+        run_paper(spec=spec, settings=settings, client=first_client)
+
+    assert [request["schema_name"] for request in first_raw.requests] == [
+        "paper_evaluation_candidates",
+        "paper_table_row_dispositions",
+        "paper_table_row_dispositions",
+    ]
+    assert first_client.summary["structured_calls_started"] == 3
+    private = settings.output_root / spec.paper_id / "private"
+    interrupted = read_json(private / "row-enumeration-checkpoint.json")
+    batch_id = next(iter(interrupted["batches"]))
+    partial = interrupted["batches"][batch_id]
+    assert [attempt["depth"] for attempt in partial["attempts"]] == [0, 1]
+    assert len(partial["calls"]) == 2
+    assert len(partial["unresolved_row_ids"]) == 1
+
+    resumed_raw = _RecoveringRowClient()
+    resumed_client = _budgeted_pipeline_client(tmp_path, resumed_raw, calls=4)
+    resumed = run_paper(spec=spec, settings=settings, client=resumed_client)
+
+    assert len(resumed_raw.requests) == 1
+    assert resumed_raw.requests[0]["schema_name"] == "paper_table_row_dispositions"
+    assert resumed_client.summary["structured_calls_started"] == 4
+    assert resumed["extractor"]["execution"]["blocks_resumed"] == 1
+    assert resumed["row_enumeration"]["execution"]["batches_resumed"] == 0
+    assert [attempt["depth"] for attempt in resumed["row_enumeration"]["attempts"]] == [
+        0,
+        1,
+        1,
+    ]
+    assert resumed["row_enumeration"]["outcome"]["dispositions"] == {
+        "result": 0,
+        "not_result": 2,
+        "uncertain": 0,
+    }
+    completed = read_json(private / "row-enumeration-checkpoint.json")
+    assert len(completed["batches"][batch_id]["calls"]) == 3
+
+    events = [
+        json.loads(line)
+        for line in resumed_client.ledger_path.read_text(encoding="utf-8").splitlines()
+    ]
+    request_hashes = [
+        event["request"]["request_sha256"]
+        for event in events
+        if event["event_type"] == "reservation"
+    ]
+    assert len(request_hashes) == len(set(request_hashes)) == 4
+
+    final_client = _budgeted_pipeline_client(tmp_path, _NeverCallClient(), calls=4)
+    final = run_paper(spec=spec, settings=settings, client=final_client)
+    assert final["row_enumeration"]["execution"]["batches_resumed"] == 1
+    assert final_client.summary["structured_calls_started"] == 4
+
+
+def test_extractor_and_row_checkpoints_fail_closed_on_code_state_change(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
@@ -741,17 +1641,23 @@ def test_row_checkpoint_survives_unrelated_code_state_change(
     first = run_paper(spec=spec, settings=settings, client=_EndToEndRowClient())
     source_hash[0] = "b" * 64
 
-    second = run_paper(spec=spec, settings=settings, client=_NeverCallClient())
+    second_client = _EndToEndRowClient()
+    second = run_paper(spec=spec, settings=settings, client=second_client)
 
     assert (
         first["row_enumeration"]["checkpoint"]["contract_sha256"]
         != (second["row_enumeration"]["checkpoint"]["contract_sha256"])
     )
-    assert second["extractor"]["execution"]["blocks_resumed"] == 1
+    assert [request["schema_name"] for request in second_client.requests] == [
+        "paper_evaluation_candidates",
+        "paper_table_row_dispositions",
+    ]
+    assert second["extractor"]["execution"]["blocks_resumed"] == 0
+    assert second["extractor"]["execution"]["blocks_succeeded"] == 1
     assert second["row_enumeration"]["execution"] == {
         "batches_total": 1,
-        "batches_resumed": 1,
-        "batches_executed": 0,
+        "batches_resumed": 0,
+        "batches_executed": 1,
         "invalid_rows_seen": 0,
         "unknown_row_ids_seen": 0,
     }
@@ -784,7 +1690,6 @@ def test_row_checkpoint_migration_rejects_a_tampered_typed_entry(
     entry = next(iter(checkpoint["batches"].values()))
     entry["records"].pop(next(iter(entry["records"])))
     write_json(checkpoint_path, checkpoint)
-    source_hash[0] = "b" * 64
     client = _EndToEndRowClient()
 
     resumed = run_paper(spec=spec, settings=settings, client=client)
@@ -799,6 +1704,108 @@ def test_row_checkpoint_migration_rejects_a_tampered_typed_entry(
         "invalid_rows_seen": 0,
         "unknown_row_ids_seen": 0,
     }
+
+
+def test_row_checkpoint_rejects_returned_model_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(settings, row_enumeration_enabled=True)
+    run_paper(spec=spec, settings=settings, client=_EndToEndRowClient())
+    checkpoint_path = (
+        settings.output_root / spec.paper_id / "private" / "row-enumeration-checkpoint.json"
+    )
+    checkpoint = read_json(checkpoint_path)
+    entry = next(iter(checkpoint["batches"].values()))
+    entry["calls"][0]["model_returned"] = "fixture/wrong-model"
+    write_json(checkpoint_path, checkpoint)
+    client = _EndToEndRowClient()
+
+    resumed = run_paper(spec=spec, settings=settings, client=client)
+
+    assert [request["schema_name"] for request in client.requests] == [
+        "paper_table_row_dispositions"
+    ]
+    assert resumed["row_enumeration"]["execution"]["batches_resumed"] == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("model_requested", "fixture/other-model"),
+        ("model_returned", "fixture/other-model"),
+        ("model_returned", None),
+        ("prompt_sha256", "a" * 64),
+        ("max_tokens", 15_999),
+        ("schema_sha256", "b" * 64),
+        ("data_collection", "allow"),
+        ("require_parameters", False),
+        ("zdr", False),
+    ],
+)
+def test_extractor_checkpoint_rejects_mutated_exact_call_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    field: str,
+    replacement: Any,
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    run_paper(spec=spec, settings=settings, client=_EndToEndClient())
+    checkpoint_path = settings.output_root / spec.paper_id / "private" / "extractor-checkpoint.json"
+    checkpoint = read_json(checkpoint_path)
+    entry = next(iter(checkpoint["blocks"].values()))
+    entry["calls"][0][field] = replacement
+    entry["attempts"][0]["call"][field] = replacement
+    write_json(checkpoint_path, checkpoint)
+    client = _EndToEndClient()
+
+    resumed = run_paper(spec=spec, settings=settings, client=client)
+
+    assert len(client.requests) == 1
+    assert resumed["extractor"]["execution"]["blocks_resumed"] == 0
+    assert resumed["extractor"]["execution"]["blocks_succeeded"] == 1
+
+
+@pytest.mark.parametrize("mutation", ["extraction_method", "evidence_page"])
+def test_extractor_checkpoint_rejects_mutated_candidate_block_binding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mutation: str
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    run_paper(spec=spec, settings=settings, client=_EndToEndClient())
+    checkpoint_path = settings.output_root / spec.paper_id / "private" / "extractor-checkpoint.json"
+    checkpoint = read_json(checkpoint_path)
+    entry = next(iter(checkpoint["blocks"].values()))
+    for candidate in (entry["candidates"][0], entry["attempts"][0]["candidates"][0]):
+        if mutation == "extraction_method":
+            candidate["extraction_method"] = "openrouter:fixture/other-model"
+        else:
+            candidate["evidence"][0]["page"] = 2
+    write_json(checkpoint_path, checkpoint)
+    client = _EndToEndClient()
+
+    resumed = run_paper(spec=spec, settings=settings, client=client)
+
+    assert len(client.requests) == 1
+    assert resumed["extractor"]["execution"]["blocks_resumed"] == 0
+
+
+def test_extractor_checkpoint_rejects_mutated_attempt_status_and_success_index(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    run_paper(spec=spec, settings=settings, client=_EndToEndClient())
+    checkpoint_path = settings.output_root / spec.paper_id / "private" / "extractor-checkpoint.json"
+    checkpoint = read_json(checkpoint_path)
+    entry = next(iter(checkpoint["blocks"].values()))
+    entry["attempts"][0]["status"] = "provider_response_wire_validation"
+    entry["successful_call_indexes"] = []
+    write_json(checkpoint_path, checkpoint)
+    client = _EndToEndClient()
+
+    resumed = run_paper(spec=spec, settings=settings, client=client)
+
+    assert len(client.requests) == 1
+    assert resumed["extractor"]["execution"]["blocks_resumed"] == 0
 
 
 def test_zero_candidate_and_zero_eee_are_explicit_review_states(
@@ -847,6 +1854,7 @@ def test_successful_blocks_resume_from_contract_bound_private_checkpoint(
     monkeypatch, tmp_path: Path
 ) -> None:
     spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    settings = replace(settings, seed=None)
     _trust_current_paper_origin(monkeypatch)
 
     first = run_paper(spec=spec, settings=settings, client=_EndToEndClient())
@@ -861,9 +1869,20 @@ def test_successful_blocks_resume_from_contract_bound_private_checkpoint(
         "calls_succeeded": 1,
         "calls_failed": 0,
         "calls_resumed": 0,
+        "calls_resumed_succeeded": 0,
+        "calls_resumed_failed": 0,
+        "no_call_failures": 0,
+        "requests_rejected": 0,
+        "transport_failures": 0,
+        "local_failures": 0,
     }
     assert "page_summary" not in checkpoint_text
     assert "one result" not in checkpoint_text
+    checkpoint = read_json(checkpoint_path)
+    private_call = next(iter(checkpoint["blocks"].values()))["calls"][0]
+    assert private_call["temperature"] is None
+    assert private_call["seed"] is None
+    assert private_call["reasoning_tokens"] is None
 
     second = run_paper(spec=spec, settings=settings, client=_NeverCallClient())
 
@@ -871,6 +1890,10 @@ def test_successful_blocks_resume_from_contract_bound_private_checkpoint(
     assert second["counts"]["eee_records"] == 1
     assert second["extractor"]["calls"] == []
     assert len(second["extractor"]["resumed_calls"]) == 1
+    resumed_public_call = second["extractor"]["resumed_calls"][0]
+    assert resumed_public_call["temperature"] is None
+    assert resumed_public_call["seed"] is None
+    assert resumed_public_call["reasoning_tokens"] is None
     assert second["extractor"]["execution"] == {
         "blocks_total": 1,
         "blocks_succeeded": 0,
@@ -879,6 +1902,12 @@ def test_successful_blocks_resume_from_contract_bound_private_checkpoint(
         "calls_succeeded": 0,
         "calls_failed": 0,
         "calls_resumed": 1,
+        "calls_resumed_succeeded": 1,
+        "calls_resumed_failed": 0,
+        "no_call_failures": 0,
+        "requests_rejected": 0,
+        "transport_failures": 0,
+        "local_failures": 0,
     }
     assert second["extractor"]["successful_call_telemetry"]["calls"] == 1
     assert second["extractor"]["successful_call_telemetry"]["cost_usd_lower_bound"] == 0.001
@@ -889,6 +1918,25 @@ def test_failed_block_isolated_completed_call_preserved_and_retried(
     monkeypatch, tmp_path: Path
 ) -> None:
     spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    control_block_ids: list[list[str]] = []
+    observation_block_ids: list[list[str]] = []
+
+    def tracked_control_examination(reference, layout, examined_blocks):
+        control_block_ids.append([block.block_id for block in examined_blocks])
+        return compute_control_examination(reference, layout, examined_blocks)
+
+    def tracked_observation_examination(reference, layout, examined_blocks):
+        observation_block_ids.append([block.block_id for block in examined_blocks])
+        return compute_observation_examination(reference, layout, examined_blocks)
+
+    monkeypatch.setattr(
+        "proceedings_to_eee.pipeline.control_examination",
+        tracked_control_examination,
+    )
+    monkeypatch.setattr(
+        "proceedings_to_eee.pipeline.observation_examination",
+        tracked_observation_examination,
+    )
 
     def two_blocks(page: PageFragment, *, config):
         blocks = segment_page_result_blocks(page, config=config)
@@ -924,6 +1972,12 @@ def test_failed_block_isolated_completed_call_preserved_and_retried(
         "calls_succeeded": 1,
         "calls_failed": 1,
         "calls_resumed": 0,
+        "calls_resumed_succeeded": 0,
+        "calls_resumed_failed": 0,
+        "no_call_failures": 0,
+        "requests_rejected": 0,
+        "transport_failures": 0,
+        "local_failures": 0,
     }
     assert len(first["extractor"]["calls"]) == 2
     failed_attempt = first["extractor"]["block_attempts"][0]
@@ -935,6 +1989,10 @@ def test_failed_block_isolated_completed_call_preserved_and_retried(
         (paper_dir / "private" / "extractor-checkpoint.json").read_text(encoding="utf-8")
     )
     assert list(checkpoint["blocks"]) == [first["selected_blocks"][1]["block_id"]]
+    assert control_block_ids == [[first["selected_blocks"][1]["block_id"]]]
+    assert observation_block_ids == [[first["selected_blocks"][1]["block_id"]]]
+    reference_score = read_json(paper_dir / "reference-score.json")
+    assert reference_score["input_observability"]["status"] == "measured"
     assert not (paper_dir / "eee" / "stale.json").exists()
     assert "STALE REVIEW" not in (paper_dir / "review.html").read_text(encoding="utf-8")
     assert json.loads((paper_dir / "reference-score.json").read_text()) != {"stale": True}
@@ -962,6 +2020,11 @@ def test_recursive_recovery_retains_failed_call_telemetry_and_checkpoints_succes
     assert len(client.requests) == 3
     assert len(result["extractor"]["calls"]) == 3
     assert result["extractor"]["successful_call_telemetry"]["calls"] == 2
+    assert result["extractor"]["completed_call_telemetry"]["calls"] == 3
+    assert result["extractor"]["execution"]["blocks_succeeded"] == 1
+    assert result["extractor"]["execution"]["blocks_failed"] == 0
+    assert result["extractor"]["execution"]["calls_succeeded"] == 2
+    assert result["extractor"]["execution"]["calls_failed"] == 1
     attempt = result["extractor"]["block_attempts"][0]
     assert attempt["status"] == "recovered_by_split"
     assert attempt["recovery_calls"] == 2
@@ -973,6 +2036,88 @@ def test_recursive_recovery_retains_failed_call_telemetry_and_checkpoints_succes
         settings.output_root / spec.paper_id / "private" / "extractor-checkpoint.json"
     )
     assert list(checkpoint["blocks"]) == [result["selected_blocks"][0]["block_id"]]
+
+
+def test_recovered_extractor_checkpoint_revalidates_the_failed_parent_call(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    run_paper(spec=spec, settings=settings, client=_FailFirstValidationClient())
+    checkpoint_path = settings.output_root / spec.paper_id / "private" / "extractor-checkpoint.json"
+    checkpoint = read_json(checkpoint_path)
+    entry = next(iter(checkpoint["blocks"].values()))
+    assert [attempt["status"] for attempt in entry["attempts"]] == [
+        "provider_response_invalid_json",
+        "success",
+        "success",
+    ]
+    entry["calls"][0]["prompt_sha256"] = "a" * 64
+    entry["attempts"][0]["call"]["prompt_sha256"] = "a" * 64
+    write_json(checkpoint_path, checkpoint)
+    client = _FailFirstValidationClient()
+
+    resumed = run_paper(spec=spec, settings=settings, client=client)
+
+    assert len(client.requests) == 3
+    assert resumed["extractor"]["execution"]["blocks_resumed"] == 0
+    assert resumed["extractor"]["execution"]["blocks_succeeded"] == 1
+
+
+def test_budget_stop_mid_legacy_split_resumes_without_repeating_charged_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    first_raw = _FailFirstValidationClient()
+    first_client = _budgeted_pipeline_client(tmp_path, first_raw, calls=2)
+
+    with pytest.raises(ProviderBudgetExhausted, match="structured_call_limit"):
+        run_paper(spec=spec, settings=settings, client=first_client)
+
+    assert len(first_raw.requests) == 2
+    assert first_client.summary["structured_calls_started"] == 2
+    checkpoint_path = settings.output_root / spec.paper_id / "private" / "extractor-checkpoint.json"
+    interrupted = read_json(checkpoint_path)
+    root_id = next(iter(interrupted["recoveries"]))
+    assert interrupted["blocks"] == {}
+    assert [item["depth"] for item in interrupted["recoveries"][root_id]["attempts"]] == [
+        0,
+        1,
+    ]
+
+    resumed_raw = _EndToEndClient()
+    resumed_client = _budgeted_pipeline_client(tmp_path, resumed_raw, calls=3)
+    resumed = run_paper(spec=spec, settings=settings, client=resumed_client)
+
+    assert len(resumed_raw.requests) == 1
+    assert resumed_raw.requests[0]["schema_name"] == "paper_evaluation_candidates"
+    assert resumed_client.summary["structured_calls_started"] == 3
+    assert len(resumed["extractor"]["calls"]) == 1
+    assert len(resumed["extractor"]["resumed_calls"]) == 2
+    assert resumed["extractor"]["execution"]["calls_resumed"] == 2
+    assert resumed["extractor"]["successful_call_telemetry"]["calls"] == 2
+    completed = read_json(checkpoint_path)
+    assert completed["recoveries"] == {}
+    assert len(completed["blocks"][root_id]["calls"]) == 3
+    assert completed["blocks"][root_id]["successful_call_indexes"] == [1, 2]
+
+    events = [
+        json.loads(line)
+        for line in resumed_client.ledger_path.read_text(encoding="utf-8").splitlines()
+    ]
+    request_hashes = [
+        event["request"]["request_sha256"]
+        for event in events
+        if event["event_type"] == "reservation"
+    ]
+    assert len(request_hashes) == len(set(request_hashes)) == 3
+
+    final_client = _budgeted_pipeline_client(tmp_path, _NeverCallClient(), calls=3)
+    final = run_paper(spec=spec, settings=settings, client=final_client)
+    assert final["extractor"]["execution"]["blocks_resumed"] == 1
+    assert len(final["extractor"]["resumed_calls"]) == 3
+    assert final["extractor"]["successful_call_telemetry"]["calls"] == 2
+    assert final_client.summary["structured_calls_started"] == 3
 
 
 def test_terminal_recovery_preserves_successful_sibling_candidates_and_safe_failure(
@@ -1116,6 +2261,9 @@ def test_review_omits_schema_invalid_projection(monkeypatch, tmp_path: Path) -> 
     }
     assert result["counts"]["candidates_needing_review"] == 1
     assert result["counts"]["semantic_safety_reviews"] == 0
+    observation = json.loads((paper_dir / "observations.jsonl").read_text(encoding="utf-8").strip())
+    assert observation["export_status"] == "needs_review"
+    assert observation["export_reason"] == "projected EEE record failed schema validation"
     assert captured["eee_records"] == []
     assert len(captured["validation_errors"]) == 1
     assert not list((paper_dir / "eee").glob("*.json"))

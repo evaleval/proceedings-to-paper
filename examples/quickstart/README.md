@@ -7,8 +7,8 @@ payload, private annotation, or measured accuracy claim.
 
 `corpus-template.yaml` is a valid one-paper development corpus. Copy it,
 replace the example metadata and PDF URL, and use the resulting file with
-`ere run-corpus`. The main README documents the paid provider-backed command
-and the development-split boundary.
+`ere run-corpus`. Run `ere run-corpus --help` for provider and budget options, and see
+the [project guide](../../docs/project-guide.md) for the workflow and evaluation scope.
 
 ## Inspect the review layer
 

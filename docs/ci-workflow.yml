@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install PDF runtime
+        run: sudo apt-get update && sudo apt-get install --yes poppler-utils
+
+      - name: Install frozen development environment
+        run: uv sync --frozen --group dev
+
+      - name: Check publication contents
+        run: python scripts/check_public_release.py
+
+      - name: Run tests
+        run: uv run --frozen pytest -q -p no:cacheprovider
+
+      - name: Check formatting and lint
+        run: |
+          uv run --frozen ruff check --no-cache .
+          uv run --frozen ruff format --check --no-cache .
+
+      - name: Build distributions
+        run: uv build --no-build-isolation
+
+      - name: Smoke-test installed wheel and packaged schema
+        run: |
+          UV_PROJECT_ENVIRONMENT=.venv-smoke uv sync --frozen --no-dev --no-install-project
+          uv pip install --python .venv-smoke/bin/python --no-deps dist/*.whl
+          cd "$(mktemp -d)"
+          "$GITHUB_WORKSPACE/.venv-smoke/bin/proceedings-to-eee" --help
+          "$GITHUB_WORKSPACE/.venv-smoke/bin/proceedings-to-eee" validate-eee \
+            "$GITHUB_WORKSPACE/examples/quickstart/synthetic-eee.json"
+
+      - name: Run installed-wheel offline end-to-end demo
+        run: |
+          "$GITHUB_WORKSPACE/.venv-smoke/bin/ere" demo \
+            --output "$RUNNER_TEMP/proceedings-to-eee-demo"
+          "$GITHUB_WORKSPACE/.venv-smoke/bin/ere" verify-run \
+            "$RUNNER_TEMP/proceedings-to-eee-demo/derived"

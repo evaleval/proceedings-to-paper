@@ -19,6 +19,12 @@ review; it can never move one in. In particular, v0 never emits ``PAPER_PRODUCED
 absence of an external cue is not positive evidence that the current paper produced a
 number.
 
+That is why canonical EEE is empty, and why a second, explicitly weaker policy exists.
+``OriginExportPolicy.TIERED`` lets a composition run export a candidate on a named
+weaker basis, which the record then carries. It changes nothing here: this resolver
+still never emits ``PAPER_PRODUCED``, and a verdict is never promoted. See
+``domain/attribution.py`` for the bases and ``census_recompose.py`` for the replay.
+
 Only row-scoped decisive cues and structural abstentions change state. Caption cues and
 bare citation brackets are recorded on the verdict and never gate, because they can
 describe the table or dataset without identifying who produced a particular row.

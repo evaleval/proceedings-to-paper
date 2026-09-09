@@ -18,11 +18,35 @@ artifacts/
 output/
 cache/
 runs/
+reviews/
+derived/
+annotations/
+references/
+vault/
 tmp/
 *.pdf
-!assets/proceedings-to-eee-pipeline.pdf
 *.zip
 *.parquet
 .DS_Store
 docs/.Rhistory
 examples/erster_lauf/
+
+# Generated from a private census CSV by `ere import-census`; regenerate, do not commit.
+configs/corpora/census-*.yaml
+
+# Copied private development corpus config; annotations live in the ignored references/.
+configs/corpora/acm-perspective-10.yaml
+
+# Private research context and generated working material.
+private/
+experiments/
+local/
+*.gitbundle
+*.bundle
+*.log
+*.aux
+*.fls
+*.fdb_latexmk
+.venv-*/
+.agents/
+.codex/

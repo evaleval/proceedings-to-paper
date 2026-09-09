@@ -17,8 +17,7 @@ signal is the annotated cases inside it: at least one missed row is an annotated
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -29,12 +28,13 @@ from proceedings_to_eee.extraction.pdf_layout import PdfLayout
 from proceedings_to_eee.extraction.region_index import RegionKind, build_region_index
 from proceedings_to_eee.extraction.result_blocks import ResultBlock
 from proceedings_to_eee.extraction.row_enumeration import (
-    RowDisposition,
-    RowDispositionRecord,
     RowEnumerationPlan,
+    RowTerminalLedger,
     build_row_enumeration_plan,
 )
-from proceedings_to_eee.io import read_json, sha256_file, write_json
+from proceedings_to_eee.extraction.row_validation import validate_terminal_ledger_against
+from proceedings_to_eee.io import read_json, write_json
+from proceedings_to_eee.providers.openrouter import ProviderCall
 from proceedings_to_eee.validation.candidates import normalize_evidence_text
 
 ROW_COVERAGE_SCHEMA_VERSION = "row-coverage/0.2"
@@ -74,7 +74,7 @@ def _validated_row_ledger(
 
     private = paper_dir / "private"
     plan_path = private / "row-enumeration-plan.json"
-    ledger_path = private / "row-enumeration.json"
+    ledger_path = private / "row-terminal-states.json"
     if not plan_path.exists() and not ledger_path.exists():
         return None
     if not plan_path.is_file() or not ledger_path.is_file():
@@ -90,99 +90,38 @@ def _validated_row_ledger(
     if plan.model_dump(mode="json") != rebuilt.model_dump(mode="json"):
         raise ValueError(f"{paper_dir.name}: row enumeration plan does not match layout/blocks")
 
-    planned_ids = [row.row_id for row in plan.rows]
-    if len(set(planned_ids)) != len(planned_ids):
-        raise ValueError(f"{paper_dir.name}: duplicate row ids in row enumeration plan")
-    planned = set(planned_ids)
-    unbatchable_ids = [row.row_id for row in plan.unbatchable_rows]
-    unbatchable = set(unbatchable_ids)
-    batch_ids = [row.row_id for batch in plan.batches for row in batch.rows]
-    if len(unbatchable) != len(unbatchable_ids) or len(set(batch_ids)) != len(batch_ids):
-        raise ValueError(f"{paper_dir.name}: duplicate row assignment in row enumeration plan")
-    if set(batch_ids) != planned - unbatchable:
-        raise ValueError(f"{paper_dir.name}: row enumeration batches do not partition planned rows")
-
     try:
-        raw = read_json(ledger_path)
-    except (OSError, ValueError) as exc:
+        ledger = RowTerminalLedger.model_validate(read_json(ledger_path))
+        run = read_json(paper_dir / "run.json")
+        row_stage = run["row_enumeration"]
+        model = row_stage["model"]
+        calls = [ProviderCall.model_validate(item) for item in row_stage["calls"]]
+    except (KeyError, OSError, TypeError, ValueError, ValidationError) as exc:
         raise ValueError(f"{paper_dir.name}: malformed row enumeration ledger") from exc
-    if not isinstance(raw, Mapping):
-        raise ValueError(f"{paper_dir.name}: row enumeration ledger must be an object")
-    ledger_schema = raw.get("schema_version")
-    if ledger_schema is not None and ledger_schema != "row-enumeration-outcome/0.1":
-        raise ValueError(f"{paper_dir.name}: unsupported row enumeration ledger schema")
-    ledger_plan_sha256 = raw.get("plan_sha256")
-    if ledger_plan_sha256 is not None and ledger_plan_sha256 != sha256_file(plan_path):
-        raise ValueError(f"{paper_dir.name}: row enumeration ledger plan hash mismatch")
-    raw_records = raw.get("records")
-    raw_unresolved = raw.get("unresolved_row_ids")
-    raw_unbatchable = raw.get("unbatchable_row_ids")
-    telemetry = raw.get("telemetry")
-    if not isinstance(raw_records, Mapping):
-        raise ValueError(f"{paper_dir.name}: row enumeration records must be keyed by row_id")
-    if not isinstance(raw_unresolved, list) or not all(
-        isinstance(item, str) for item in raw_unresolved
-    ):
-        raise ValueError(f"{paper_dir.name}: unresolved_row_ids must be a list of strings")
-    if raw_unbatchable is not None and (
-        not isinstance(raw_unbatchable, list)
-        or not all(isinstance(item, str) for item in raw_unbatchable)
-    ):
-        raise ValueError(f"{paper_dir.name}: unbatchable_row_ids must be a list of strings")
-    if not isinstance(telemetry, Mapping):
-        raise ValueError(f"{paper_dir.name}: row enumeration telemetry must be an object")
+    try:
+        validate_terminal_ledger_against(
+            plan,
+            ledger,
+            paper_id=paper_dir.name,
+            model=model,
+            retained_calls=calls,
+        )
+    except ValueError as exc:
+        raise ValueError(f"{paper_dir.name}: invalid row terminal ledger") from exc
 
-    records: dict[str, RowDispositionRecord] = {}
-    for key, payload in raw_records.items():
-        if not isinstance(key, str):
-            raise ValueError(f"{paper_dir.name}: row enumeration record key must be a string")
-        try:
-            record = RowDispositionRecord.model_validate(payload)
-        except (ValueError, ValidationError) as exc:
-            raise ValueError(f"{paper_dir.name}: malformed disposition record for {key}") from exc
-        if record.row_id != key:
-            raise ValueError(f"{paper_dir.name}: disposition record key/row_id mismatch for {key}")
-        records[key] = record
-
-    record_ids = set(records)
-    unresolved_ids = set(raw_unresolved)
-    if len(unresolved_ids) != len(raw_unresolved):
-        raise ValueError(f"{paper_dir.name}: duplicate unresolved row ids")
-    if raw_unbatchable is not None and (
-        len(set(raw_unbatchable)) != len(raw_unbatchable) or set(raw_unbatchable) != unbatchable
-    ):
-        raise ValueError(f"{paper_dir.name}: row ledger unbatchable ids mismatch plan")
-    unknown = (record_ids | unresolved_ids | unbatchable) - planned
-    if unknown:
-        raise ValueError(f"{paper_dir.name}: row ledger contains unknown row ids")
-    if record_ids & (unresolved_ids | unbatchable) or unresolved_ids & unbatchable:
-        raise ValueError(f"{paper_dir.name}: row ledger assigns a row more than once")
-    if record_ids | unresolved_ids | unbatchable != planned:
-        raise ValueError(f"{paper_dir.name}: row ledger does not account for every planned row")
-
-    dispositions = Counter(record.disposition.value for record in records.values())
-    expected_telemetry: dict[str, object] = {
-        "rows_resolved": len(records),
-        "rows_unresolved": len(unresolved_ids),
-        "rows_unbatchable": len(unbatchable),
-        "dispositions": {item.value: dispositions[item.value] for item in RowDisposition},
-    }
-    for key, expected in expected_telemetry.items():
-        if telemetry.get(key) != expected:
-            raise ValueError(f"{paper_dir.name}: row ledger telemetry mismatch for {key}")
-
-    resolved = len(records)
-    unresolved = len(unresolved_ids) + len(unbatchable)
+    counts = ledger.counts
+    resolved = counts.result + counts.not_result + counts.uncertain
+    unresolved = counts.unresolved + counts.unsupported
     return {
         "ledger_status": "validated",
-        "rows_planned": len(planned),
+        "rows_planned": counts.planned,
         "rows_resolved": resolved,
-        "resolution_coverage": resolved / len(planned) if planned else None,
-        "result_rows": dispositions[RowDisposition.RESULT.value],
-        "not_result_rows": dispositions[RowDisposition.NOT_RESULT.value],
-        "uncertain_rows": dispositions[RowDisposition.UNCERTAIN.value],
+        "resolution_coverage": resolved / counts.planned if counts.planned else None,
+        "result_rows": counts.result,
+        "not_result_rows": counts.not_result,
+        "uncertain_rows": counts.uncertain,
         "unresolved_rows": unresolved,
-        "unbatchable_rows": len(unbatchable),
+        "unbatchable_rows": counts.unsupported,
         "basis": (
             "Resolved/planned uses the validated row-disposition ledger. result rows carry "
             "one or more candidates; not_result and uncertain are resolved abstentions and "

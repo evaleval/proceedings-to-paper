@@ -22,3 +22,14 @@ def test_sdist_excludes_private_and_user_owned_runtime_artifacts() -> None:
         "**/*.zip",
     }
     assert required <= exclusions
+
+
+def test_private_review_and_annotation_roots_are_gitignored() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    patterns = {
+        line.strip()
+        for line in (project_root / ".gitignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert {"reviews/", "derived/", "annotations/", "references/", "vault/"} <= patterns

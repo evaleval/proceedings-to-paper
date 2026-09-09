@@ -1,0 +1,118 @@
+{
+  "schema_version": "census-review-label-packet/0.1",
+  "synthetic_only": true,
+  "seed": "synthetic-demo-v1",
+  "requested": {
+    "size": 2,
+    "negatives": 3
+  },
+  "available": {
+    "accepted": 2,
+    "not_accepted": 3
+  },
+  "entries": [
+    {
+      "observation_id": "obs_synthetic_1",
+      "paper_id": "synthetic-paper-1",
+      "page": 1,
+      "page_text": "Synthetic example only. We evaluated Cedar and Pine on the SynthTox test split. Table 1 reports macro F1 on a 0 to 1 scale. Cedar: 0.81. Pine: 0.76.",
+      "candidate": {
+        "evaluated_system": "Cedar",
+        "dataset": "SynthTox",
+        "metric": "macro F1",
+        "unit": "proportion",
+        "reported_value": "0.81",
+        "scope": "split=test",
+        "extractor_evidence_quote": "Cedar: 0.81."
+      },
+      "model_decision": "accept",
+      "model_proposed_decision": "accept",
+      "candidate_payload_sha256": null,
+      "label": null,
+      "label_note": null
+    },
+    {
+      "observation_id": "obs_synthetic_2",
+      "paper_id": "synthetic-paper-2",
+      "page": 1,
+      "page_text": "Synthetic example only. We evaluated Cedar and Pine on the SynthTox test split. Table 1 reports macro F1 on a 0 to 1 scale. Cedar: 0.81. Pine: 0.76.",
+      "candidate": {
+        "evaluated_system": "Cedar",
+        "dataset": "SynthTox",
+        "metric": "macro F1",
+        "unit": "proportion",
+        "reported_value": "0.76",
+        "scope": "split=test",
+        "extractor_evidence_quote": "Cedar: 0.76."
+      },
+      "model_decision": "accept_tuple_only",
+      "model_proposed_decision": "accept_tuple_only",
+      "candidate_payload_sha256": null,
+      "label": null,
+      "label_note": null
+    },
+    {
+      "observation_id": "obs_synthetic_3",
+      "paper_id": "synthetic-paper-3",
+      "page": 1,
+      "page_text": "Synthetic example only. We evaluated Cedar and Pine on the SynthTox test split. Table 1 reports macro F1 on a 0 to 1 scale. Cedar: 0.81. Pine: 0.76.",
+      "candidate": {
+        "evaluated_system": "Pine",
+        "dataset": "SynthTox",
+        "metric": "macro F1",
+        "unit": "proportion",
+        "reported_value": "0.81",
+        "scope": "split=test",
+        "extractor_evidence_quote": "Pine: 0.81."
+      },
+      "model_decision": "reject",
+      "model_proposed_decision": "reject",
+      "candidate_payload_sha256": null,
+      "label": null,
+      "label_note": null
+    },
+    {
+      "observation_id": "obs_synthetic_4",
+      "paper_id": "synthetic-paper-4",
+      "page": 1,
+      "page_text": "Synthetic example only. We evaluated Cedar and Pine on the SynthTox test split. Table 1 reports macro F1 on a 0 to 1 scale. Cedar: 0.81. Pine: 0.76.",
+      "candidate": {
+        "evaluated_system": "Pine",
+        "dataset": "SynthTox",
+        "metric": "macro F1",
+        "unit": "proportion",
+        "reported_value": "0.76",
+        "scope": "split=test",
+        "extractor_evidence_quote": "Pine: 0.76."
+      },
+      "model_decision": "abstain",
+      "model_proposed_decision": "abstain",
+      "candidate_payload_sha256": null,
+      "label": null,
+      "label_note": null
+    },
+    {
+      "observation_id": "obs_synthetic_5",
+      "paper_id": "synthetic-paper-5",
+      "page": 1,
+      "page_text": "Synthetic example only. Table 1. Macro F1, 0 to 1 scale. Cedar: 0.81.",
+      "candidate": {
+        "evaluated_system": "Cedar",
+        "dataset": "SynthTox",
+        "metric": "macro F1",
+        "unit": "proportion",
+        "reported_value": "0.81",
+        "scope": "split=test",
+        "extractor_evidence_quote": "Cedar: 0.81."
+      },
+      "model_decision": "abstain",
+      "model_proposed_decision": "abstain",
+      "candidate_payload_sha256": null,
+      "label": null,
+      "label_note": null
+    }
+  ],
+  "instructions": [
+    "Invented teaching example. Judge the candidate tuple against the supplied page, not the model decision."
+  ]
+}

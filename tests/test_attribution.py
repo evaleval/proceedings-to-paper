@@ -227,11 +227,15 @@ def _layout(text: str, page: int = 13) -> dict[str, PdfLayout]:
 
 def test_gate_demotes_the_comparator_to_review_not_to_a_silent_drop() -> None:
     comparator = _candidate(
-        "Example Ensemble (Leaderboard Entry) 0.781",
+        "                              Example Ensemble (Leaderboard Entry)         0.781",
         "Example Ensemble (Leaderboard Entry)",
         "0.781",
     )
-    own = _candidate("Paper System 0.742", "Paper System", "0.742")
+    own = _candidate(
+        "                              Paper System                                0.742",
+        "Paper System",
+        "0.742",
+    )
     validate_candidates([comparator, own], _layout(MIXED_ORIGIN_PAGE), min_confidence=0.0)
 
     assert comparator.export_status is ExportStatus.NEEDS_REVIEW

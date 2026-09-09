@@ -15,6 +15,7 @@ dependencies = [
   "jsonschema==4.25.1",
   "pydantic==2.11.7",
   "PyYAML==6.0.2",
+  "reportlab==4.4.9",
   "typer==0.16.1",
 ]
 
@@ -41,6 +42,7 @@ include = [
   "/LICENSE",
   "/PROJECT_CONTRACT.md",
   "/README.md",
+  "/assets",
   "/pyproject.toml",
   "/uv.lock",
   "/src",
@@ -50,8 +52,18 @@ include = [
   "/docs/architecture.md",
   "/docs/evaluation-status.md",
   "/docs/annotation-method.md",
+  "/docs/annotation-guide.md",
+  "/docs/project-guide.md",
+  "/docs/release-scope.md",
+  "/docs/ci-workflow.yml",
+  "/scripts/check_public_release.py",
+  "/results/census-summary-2026-09-05.json",
+  "/examples/annotation",
   "/examples/quickstart",
 ]
+
+[tool.hatch.build.targets.sdist.force-include]
+".env.example" = ".env.example"
 
 [tool.hatch.build]
 exclude = [
@@ -73,6 +85,11 @@ exclude = [
   "/htmlcov",
   "/output",
   "/references",
+  "/annotations",
+  "/reviews",
+  "/derived",
+  "/private",
+  "/experiments",
   "/runs",
   "/tmp",
   "/vault",

@@ -13,6 +13,7 @@ from proceedings_to_eee.extraction.pdf_layout import PageFragment, PdfLayout, se
 from proceedings_to_eee.extraction.region_index import _normalize, build_region_index
 from proceedings_to_eee.extraction.result_blocks import (
     LEGACY_RECOVERY_MAX_DEPTH,
+    ResultBlockConfig,
     maximum_legacy_block_invocations,
     segment_page_result_blocks,
     split_result_block,
@@ -23,6 +24,7 @@ from proceedings_to_eee.providers.openrouter import (
     ProviderRequestRejectedError,
     ProviderResponseValidationError,
     StructuredResponse,
+    completion_token_parameter_for_model,
 )
 
 TABLE_PAGE = """Table 8. Synthetic indicator grid.
@@ -120,6 +122,7 @@ class _RecordingClient:
             temperature=kwargs["temperature"],
             reasoning_effort=kwargs["reasoning_effort"],
             max_tokens=kwargs["max_tokens"],
+            completion_token_parameter=completion_token_parameter_for_model(kwargs["model"]),
             seed=kwargs["seed"],
             schema_name=kwargs["schema_name"],
             schema_sha256="c" * 64,
@@ -242,7 +245,7 @@ def test_recovery_stops_at_the_configured_depth_bound(tmp_path: Path) -> None:
         ),
         (
             _RecordingClient(transport_fail_on={2}),
-            "extractor_block_failed",
+            "provider_transport_failed",
             "transport_failure",
         ),
     ],
@@ -427,3 +430,152 @@ def test_a_single_column_page_is_unaffected() -> None:
     blocks = segment_page_result_blocks(_page(TABLE_PAGE))
     assert blocks
     assert all(block.source_column_start is None for block in blocks)
+
+
+PARALLEL_TABLES_PAGE = """        System       Precision  Recall   F1                 Condition       Model-A  Model-B  Model-C
+        Audit API         0.53      0.64 0.58                 Plain           0.37     0.80     2.93
+        Classifier One    0.78      0.27 0.41                 Clustered       0.37     1.07     2.90
+        Classifier Two    0.43      0.65 0.52                 Prefixed        0.50     1.23     3.83
+Table 14. Direct audit against human labels.                  Table 17. Independent attack results.
+"""
+
+PARALLEL_HEADER_TABLES_PAGE = """Model              Precision  Recall  F1                 Model              Accuracy  Error  Score
+Audit API               0.53    0.64 0.58                 Attack One             0.37   0.80   2.93
+Classifier One          0.78    0.27 0.41                 Attack Two             0.37   1.07   2.90
+Classifier Two          0.43    0.65 0.52                 Attack Three           0.50   1.23   3.83
+Classifier Three        0.61    0.48 0.54                 Attack Four            0.62   0.77   2.41
+"""
+
+
+def test_parallel_numeric_tables_are_not_mistaken_for_one_full_width_table() -> None:
+    blocks = segment_page_result_blocks(_page(PARALLEL_TABLES_PAGE, page=11))
+    left_target = [
+        block
+        for block in blocks
+        if _normalize("Audit API 0.53 0.64 0.58") in _normalize(block.prompt_text())
+    ]
+    right_target = [
+        block
+        for block in blocks
+        if _normalize("Prefixed 0.50 1.23 3.83") in _normalize(block.prompt_text())
+    ]
+
+    assert left_target and right_target
+    assert left_target[0].source_column_end is not None
+    assert right_target[0].source_column_start is not None
+    assert left_target[0].source_column_end < right_target[0].source_column_start
+    assert "Independent attack" not in left_target[0].prompt_text()
+    assert "Direct audit" not in right_target[0].prompt_text()
+
+
+def test_matching_panel_headers_veto_a_false_full_width_table_without_captions() -> None:
+    blocks = segment_page_result_blocks(_page(PARALLEL_HEADER_TABLES_PAGE, page=12))
+    left_target = [
+        block
+        for block in blocks
+        if _normalize("Classifier One 0.78 0.27 0.41") in _normalize(block.prompt_text())
+    ]
+    right_target = [
+        block
+        for block in blocks
+        if _normalize("Attack Two 0.37 1.07 2.90") in _normalize(block.prompt_text())
+    ]
+
+    assert left_target and right_target
+    assert left_target[0].source_column_end is not None
+    assert right_target[0].source_column_start is not None
+    assert left_target[0].source_column_end < right_target[0].source_column_start
+
+
+def test_dense_table_rows_never_overlap_between_result_block_bodies() -> None:
+    rows = "\n".join(
+        f"System {index:02d}        0.{index:02d}   0.{index + 1:02d}   0.{index + 2:02d}"
+        for index in range(1, 21)
+    )
+    page = _page(
+        f"Table 12. Dense synthetic matrix.\n\nSystem             Accuracy  Recall  F1\n{rows}\n",
+        page=12,
+    )
+    blocks = segment_page_result_blocks(
+        page,
+        ResultBlockConfig(max_data_rows=6, overlap_lines=3, max_blocks_per_page=None),
+    )
+    table_blocks = sorted(
+        (block for block in blocks if block.data_row_count),
+        key=lambda block: block.body_start_line,
+    )
+
+    assert len(table_blocks) > 1
+    assert all(block.overlap_with_previous_lines == 0 for block in table_blocks)
+    assert all(
+        left.body_end_line < right.body_start_line
+        for left, right in zip(table_blocks, table_blocks[1:], strict=False)
+    )
+    for index in range(1, 21):
+        row = _normalize(f"System {index:02d}")
+        assert sum(row in _normalize(block.body_text) for block in table_blocks) == 1
+
+
+def test_prose_result_blocks_keep_the_configured_overlap() -> None:
+    conditions = (
+        "amber",
+        "indigo",
+        "cedar",
+        "juniper",
+        "maple",
+        "willow",
+        "aspen",
+        "birch",
+        "elm",
+    )
+    lines = "\n".join(
+        f"Accuracy was 0.{index + 21} for the synthetic {condition} condition."
+        for index, condition in enumerate(conditions)
+    )
+    blocks = segment_page_result_blocks(
+        _page(lines + "\n", page=13),
+        ResultBlockConfig(
+            max_lines=4,
+            context_lines=0,
+            trailing_context_lines=0,
+            overlap_lines=2,
+            max_data_rows=None,
+            max_blocks_per_page=None,
+        ),
+    )
+
+    assert len(blocks) > 1
+    assert any(block.overlap_with_previous_lines > 0 for block in blocks[1:])
+
+
+def test_mixed_table_prose_chunks_overlap_only_the_trailing_prose_suffix() -> None:
+    conditions = ("amber", "indigo", "cedar", "juniper", "maple", "willow", "aspen")
+    prose = "\n".join(
+        f"Accuracy was 0.{index + 72} for the synthetic {condition} condition."
+        for index, condition in enumerate(conditions)
+    )
+    page = _page(
+        "Table 14. Mixed result evidence.\n"
+        "System             Accuracy\n"
+        "Atlas                  0.91\n"
+        f"{prose}\n",
+        page=14,
+    )
+    blocks = segment_page_result_blocks(
+        page,
+        ResultBlockConfig(
+            max_lines=4,
+            context_lines=2,
+            trailing_context_lines=0,
+            overlap_lines=2,
+            max_data_rows=None,
+            max_blocks_per_page=None,
+        ),
+    )
+
+    assert len(blocks) > 1
+    assert sum("Atlas                  0.91" in block.body_text for block in blocks) == 1
+    assert any(block.overlap_with_previous_lines > 0 for block in blocks[1:])
+    for left, right in zip(blocks, blocks[1:], strict=False):
+        shared = set(left.body_text.splitlines()) & set(right.body_text.splitlines())
+        assert "Atlas                  0.91" not in shared

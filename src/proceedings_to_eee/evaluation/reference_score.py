@@ -41,11 +41,9 @@ _COVERAGE_QUALIFIER_STOPWORDS = {
     "vs",
 }
 
-# Annotation files use two separators for coverage-region components. Six holdout papers
-# use a middle dot, three use a spaced hyphen. Accepting only the dot skipped the qualifier
-# check entirely on those three, so every candidate sharing the table label entered the
-# precision denominator. A spaced hyphen is required so that names carrying an internal
-# hyphen, such as Gemini-2.0-Flash-Lite or a year range like 2016-2017, stay intact.
+# Coverage-region qualifiers may use a middle dot, pipe, or spaced hyphen. Recognize
+# each separator so matching a table label alone cannot bypass the qualifier check.
+# Require spaces around a separator hyphen to preserve model names and year ranges.
 _COVERAGE_SEPARATOR = re.compile(r"[·|]|\s-\s")
 
 _NUMERIC_MENTION = re.compile(
@@ -460,7 +458,14 @@ def _negative_control_report(
     control_examination_coverage = (
         len(examined_control_ids) / controls_total if controls_total else None
     )
-    measurement_status = "measured" if examined_control_ids else "not_measured"
+    measurement_status = (
+        "measured"
+        if controls_total > 0 and len(examined_control_ids) == controls_total
+        else "partially_measured"
+        if examined_control_ids
+        else "not_measured"
+    )
+    controls_fully_examined = controls_total > 0 and len(examined_control_ids) == controls_total
     return {
         "controls_total": controls_total,
         "control_ids": known_control_ids,
@@ -486,12 +491,12 @@ def _negative_control_report(
         "false_primary_rate_basis": rate_basis,
         "false_primary_rate_defined": rate_basis > 0,
         "zero_false_primary_gate_passed": (
-            not false_primary_ids if measurement_status == "measured" else None
+            False if false_primary_ids else True if controls_fully_examined else None
         ),
         "false_primary_export_candidate_ids": false_primary_export_ids,
         "false_primary_export_count": len(false_primary_export_ids),
         "zero_false_primary_export_gate_passed": (
-            not false_primary_export_ids if measurement_status == "measured" else None
+            False if false_primary_export_ids else True if controls_fully_examined else None
         ),
     }
 
@@ -500,6 +505,7 @@ def score_reference(
     reference: PaperReference,
     candidates: list[CandidateObservation],
     control_examination: dict[str, bool] | None = None,
+    observation_examination: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     """Score annotated-reference recall and coverage-bounded candidate precision.
 
@@ -512,7 +518,16 @@ def score_reference(
     property passing, from one that was never looked at, which is uninformative. Omitting
     it leaves every unmatched control's examination unknown and preserves the previous,
     stricter reading in which only a matched control counts as measured.
+
+    ``observation_examination`` provides the corresponding input-coverage map for positive
+    references. The ordinary detection fields remain end-to-end text-pipeline measures;
+    the additional model-conditional fields exclude only references whose result evidence
+    never appeared in a successfully extracted block.
     """
+
+    reference_ids = {item.reference_id for item in reference.observations}
+    if observation_examination is not None and set(observation_examination) != reference_ids:
+        raise ValueError("observation examination must cover every scoped reference exactly")
 
     remaining = set(range(len(candidates)))
     matched_candidate_indexes: set[int] = set()
@@ -651,6 +666,43 @@ def score_reference(
     }
     unmatched_out_of_coverage = remaining - unmatched_in_coverage
     negative_control_safety = _negative_control_report(reference, candidates, control_examination)
+    observable_matches = (
+        [match for match in matches if observation_examination.get(match.reference_id, False)]
+        if observation_examination is not None
+        else []
+    )
+    observable_true_positives = sum(
+        match.observation_id is not None for match in observable_matches
+    )
+    observable_basis = len(observable_matches)
+    observable_recall = observable_true_positives / observable_basis if observable_basis else None
+    input_observability = {
+        "status": "measured" if observation_examination is not None else "not_assessed",
+        "reference_observations": len(matches),
+        "observable_reference_observations": (
+            observable_basis if observation_examination is not None else None
+        ),
+        "unobservable_reference_observations": (
+            len(matches) - observable_basis if observation_examination is not None else None
+        ),
+        "observation_coverage": (
+            observable_basis / len(matches)
+            if observation_examination is not None and matches
+            else None
+        ),
+        "model_conditional_detection": {
+            "true_positives": (
+                observable_true_positives if observation_examination is not None else None
+            ),
+            "false_negatives": (
+                observable_basis - observable_true_positives
+                if observation_examination is not None
+                else None
+            ),
+            "recall_basis": observable_basis if observation_examination is not None else None,
+            "recall": observable_recall,
+        },
+    }
     claim_type_pairs = [
         (match.expected_claim_type, match.actual_claim_type)
         for match in matches
@@ -661,7 +713,7 @@ def score_reference(
         for item in negative_control_safety["matches"]
     )
     return {
-        "schema_version": "reference-score/0.6",
+        "schema_version": "reference-score/0.7",
         "paper_id": reference.paper_id,
         "reference_observations": len(matches),
         "recall_basis": len(matches),
@@ -692,6 +744,7 @@ def score_reference(
             "recall": recall,
             "f1": f1,
         },
+        "input_observability": input_observability,
         "field_accuracy": {
             field: sum(bool(getattr(match, field)) for match in matches) / len(matches)
             if matches

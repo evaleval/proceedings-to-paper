@@ -6,6 +6,13 @@ from typing import Any
 
 import pytest
 
+from proceedings_to_eee.evaluation import bakeoff as extractor_bakeoff
+from proceedings_to_eee.evaluation import (
+    origin_bakeoff,
+    row_bakeoff,
+    tuple_bakeoff,
+    verifier_bakeoff,
+)
 from proceedings_to_eee.extraction.llm import extract_page_candidates
 from proceedings_to_eee.extraction.llm_schema import WireExtraction, provider_json_schema
 from proceedings_to_eee.extraction.pdf_layout import PageFragment
@@ -13,7 +20,9 @@ from proceedings_to_eee.providers.openrouter import (
     ProviderCall,
     ProviderResponseValidationError,
     StructuredResponse,
+    completion_token_parameter_for_model,
     structured_request_contract,
+    structured_request_contract_from_call,
 )
 
 
@@ -22,6 +31,64 @@ def test_provider_schema_rejects_unknown_fields() -> None:
     assert schema["additionalProperties"] is False
     assert "observations" in schema["required"]
     assert WireExtraction.model_config["extra"] == "forbid"
+
+
+@pytest.mark.parametrize(
+    ("module", "extractor_shape"),
+    [
+        (extractor_bakeoff, True),
+        (row_bakeoff, False),
+        (tuple_bakeoff, False),
+        (verifier_bakeoff, False),
+        (origin_bakeoff, False),
+    ],
+)
+def test_all_bakeoff_contracts_reject_returned_model_mismatch(
+    module: Any,
+    extractor_shape: bool,
+) -> None:
+    call = ProviderCall(
+        model_requested="vendor/requested",
+        model_returned="provider/alias",
+        provider_returned="fixture-provider",
+        prompt_sha256="a" * 64,
+        response_sha256="b" * 64,
+        temperature=None,
+        reasoning_effort="minimal",
+        max_tokens=1_000,
+        completion_token_parameter="max_tokens",
+        seed=None,
+        schema_name="fixture_schema",
+        schema_sha256="c" * 64,
+        require_parameters=True,
+        latency_seconds=0.1,
+        attempts=1,
+    )
+    contract = structured_request_contract_from_call(call)
+    hash_function = module._json_sha256 if extractor_shape else module._hash
+    request = {
+        "provider_requested": "openrouter",
+        "model_requested": call.model_requested,
+        "prompt_sha256": call.prompt_sha256,
+        "request_contract_sha256": hash_function(contract),
+        "settings": {
+            "temperature": call.temperature,
+            "reasoning_effort": call.reasoning_effort,
+            "max_tokens": call.max_tokens,
+            "seed": call.seed,
+            "require_parameters": call.require_parameters,
+        },
+    }
+
+    assessment = module._contract_assessment(call, request)
+    if extractor_shape:
+        status = assessment["status"]
+        failures = assessment["failure_codes"]
+    else:
+        status, failures = assessment
+
+    assert status == "failed"
+    assert failures == ["model_returned_mismatch"]
 
 
 class _InvalidWireClient:
@@ -47,6 +114,7 @@ class _InvalidWireClient:
             temperature=kwargs["temperature"],
             reasoning_effort=kwargs["reasoning_effort"],
             max_tokens=kwargs["max_tokens"],
+            completion_token_parameter=completion_token_parameter_for_model(kwargs["model"]),
             seed=contract["seed"],
             response_format=schema_contract["response_format"],
             schema_name=schema_contract["schema_name"],

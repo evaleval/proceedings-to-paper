@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from proceedings_to_eee.corpus import CorpusSpec, PaperSpec, build_corpus_binding
-from proceedings_to_eee.domain.observation import CandidateObservation
 from proceedings_to_eee.extraction.llm import (
+    EXTRACTOR_REASONING_EFFORT,
     EXTRACTOR_SEED,
+    EXTRACTOR_TEMPERATURE,
     extractor_request_contract,
     row_extractor_request_contract,
 )
@@ -31,7 +33,6 @@ from proceedings_to_eee.extraction.row_enumeration import (
     build_row_enumeration_plan,
 )
 from proceedings_to_eee.io import canonical_json_bytes, read_json, sha256_bytes, write_json
-from proceedings_to_eee.providers.openrouter import ProviderCall
 from proceedings_to_eee.sources.manifest import (
     SourceManifest,
     SourceRole,
@@ -41,10 +42,10 @@ from proceedings_to_eee.sources.manifest import (
 ROW_PLAN_REPORT_SCHEMA_VERSION = "row-plan-report/0.1"
 NEXT_RUN_ROW_PLAN_REPORT_SCHEMA_VERSION = "next-run-row-plan-report/0.1"
 
-_EXTRACTOR_CHECKPOINT_SCHEMA_VERSION = "extractor-block-checkpoint/0.1"
-_EXTRACTOR_CHECKPOINT_CONTRACT_VERSION = "extractor-block-checkpoint-contract/0.1"
-_ROW_CHECKPOINT_SCHEMA_VERSION = "row-enumeration-checkpoint/0.1"
-_ROW_CHECKPOINT_CONTRACT_VERSION = "row-enumeration-checkpoint-contract/0.1"
+_EXTRACTOR_CHECKPOINT_SCHEMA_VERSION = "extractor-block-checkpoint/0.3"
+_EXTRACTOR_CHECKPOINT_CONTRACT_VERSION = "extractor-block-checkpoint-contract/0.3"
+_ROW_CHECKPOINT_SCHEMA_VERSION = "row-enumeration-checkpoint/0.4"
+_ROW_CHECKPOINT_CONTRACT_VERSION = "row-enumeration-checkpoint-contract/0.4"
 _MAX_TRANSPORT_ATTEMPTS_PER_INVOCATION = 4
 
 
@@ -243,28 +244,40 @@ def build_run_row_plan_report(
 
 
 def _current_extractor_configuration(model: str) -> dict[str, Any]:
+    request_contract = extractor_request_contract(
+        seed=EXTRACTOR_SEED,
+        model=model,
+        max_tokens=16_000,
+    )
     return {
         "provider": "openrouter",
         "model": model,
-        "temperature": 0.0,
-        "reasoning_effort": "minimal",
+        "temperature": EXTRACTOR_TEMPERATURE,
+        "reasoning_effort": EXTRACTOR_REASONING_EFFORT,
         "max_tokens": 16_000,
         "seed": EXTRACTOR_SEED,
+        "require_parameters": request_contract["routing"]["require_parameters"],
         "prompt_sha256": prompt_hash(),
-        "request_contract": extractor_request_contract(seed=EXTRACTOR_SEED),
+        "request_contract": request_contract,
     }
 
 
 def _current_row_extractor_configuration(model: str) -> dict[str, Any]:
+    request_contract = row_extractor_request_contract(
+        seed=EXTRACTOR_SEED,
+        model=model,
+        max_tokens=16_000,
+    )
     return {
         "provider": "openrouter",
         "model": model,
-        "temperature": 0.0,
-        "reasoning_effort": "minimal",
+        "temperature": EXTRACTOR_TEMPERATURE,
+        "reasoning_effort": EXTRACTOR_REASONING_EFFORT,
         "max_tokens": 16_000,
         "seed": EXTRACTOR_SEED,
+        "require_parameters": request_contract["routing"]["require_parameters"],
         "prompt_sha256": row_prompt_hash(),
-        "request_contract": row_extractor_request_contract(seed=EXTRACTOR_SEED),
+        "request_contract": request_contract,
     }
 
 
@@ -282,8 +295,9 @@ def _reconstruct_frozen_layout(
     manifest = SourceManifest.model_validate(read_json(manifest_path))
     if manifest.paper_id != spec.paper_id:
         raise ValueError(f"{spec.paper_id}: source manifest paper id mismatch")
+    paper_location = str(spec.pdf_url) if spec.pdf_url is not None else str(spec.pdf_path)
     configured_sources: list[tuple[SourceRole, str, str | None]] = [
-        (SourceRole.PAPER, str(spec.pdf_url), None),
+        (SourceRole.PAPER, paper_location, None),
         *[(SourceRole.SUPPLEMENT, str(url), None) for url in spec.supplement_urls],
     ]
     if spec.repository_url and spec.repository_commit:
@@ -336,24 +350,6 @@ def _current_blocks(
     return [page.page for page in selected], blocks
 
 
-def _checkpoint_entry_is_reusable(entry: object, block: ResultBlock) -> bool:
-    if not isinstance(entry, Mapping) or entry.get("block_text_sha256") != block.text_sha256:
-        return False
-    candidates = entry.get("candidates")
-    warnings = entry.get("warnings")
-    if not isinstance(candidates, list) or not isinstance(warnings, list):
-        return False
-    if not all(isinstance(warning, str) for warning in warnings):
-        return False
-    try:
-        for candidate in candidates:
-            CandidateObservation.model_validate(candidate)
-        ProviderCall.model_validate(entry.get("call"))
-    except (TypeError, ValueError):
-        return False
-    return True
-
-
 def _checkpoint_reuse(
     *,
     paper_dir: Path,
@@ -362,7 +358,10 @@ def _checkpoint_reuse(
     layout: PdfLayout,
     blocks: list[ResultBlock],
     extractor_model: str,
+    code_state: dict[str, str | bool],
 ) -> dict[str, Any]:
+    from proceedings_to_eee.pipeline import _validated_checkpoint_entry
+
     checkpoint_path = paper_dir / "private" / "extractor-checkpoint.json"
     expected_envelope = {
         "schema_version": _EXTRACTOR_CHECKPOINT_CONTRACT_VERSION,
@@ -372,6 +371,7 @@ def _checkpoint_reuse(
         "layout_parser": layout.parser,
         "layout_parser_version": layout.parser_version,
         "extractor": _current_extractor_configuration(extractor_model),
+        "code": code_state,
     }
     status = "missing"
     mismatched_fields: list[str] = []
@@ -390,26 +390,47 @@ def _checkpoint_reuse(
             raw_entries = payload.get("blocks")
             if isinstance(contract, Mapping) and isinstance(raw_entries, Mapping):
                 stored_entry_count = len(raw_entries)
-                mismatched_fields = [
-                    key
-                    for key, expected in expected_envelope.items()
-                    if contract.get(key) != expected
-                ]
-                if not mismatched_fields:
+                if payload.get("contract_sha256") != sha256_bytes(
+                    canonical_json_bytes(dict(contract))
+                ):
+                    status = "malformed"
+                else:
+                    mismatched_fields = [
+                        key
+                        for key, expected in expected_envelope.items()
+                        if contract.get(key) != expected
+                    ]
+                if status != "malformed" and not mismatched_fields:
                     status = "compatible"
                     entries = raw_entries
-                else:
+                elif status != "malformed":
                     status = "incompatible_request_envelope"
             else:
                 status = "malformed"
         else:
             status = "malformed"
 
-    reusable_block_ids = {
-        block.block_id
-        for block in blocks
-        if _checkpoint_entry_is_reusable(entries.get(block.block_id), block)
-    }
+    runtime_settings = SimpleNamespace(
+        model=extractor_model,
+        temperature=EXTRACTOR_TEMPERATURE,
+        reasoning_effort=EXTRACTOR_REASONING_EFFORT,
+        max_tokens=16_000,
+        seed=EXTRACTOR_SEED,
+    )
+    reusable_block_ids: set[str] = set()
+    if status == "compatible" and isinstance(contract, Mapping):
+        reusable_block_ids = {
+            block.block_id
+            for block in blocks
+            if _validated_checkpoint_entry(
+                entries.get(block.block_id),
+                block=block,
+                spec=spec,
+                settings=runtime_settings,
+                contract=dict(contract),
+            )
+            is not None
+        }
     new_blocks = [block for block in blocks if block.block_id not in reusable_block_ids]
     reusable = len(reusable_block_ids)
     return {
@@ -439,6 +460,7 @@ def _row_checkpoint_reuse(
     layout: PdfLayout,
     plan: RowEnumerationPlan,
     extractor_model: str,
+    code_state: dict[str, str | bool],
 ) -> dict[str, Any]:
     """Validate exact row batches under the pipeline's request-reuse envelope."""
 
@@ -463,6 +485,7 @@ def _row_checkpoint_reuse(
             **_current_row_extractor_configuration(extractor_model),
             "limits": plan.config.model_dump(mode="json"),
         },
+        "code": code_state,
     }
     expected_envelope = _row_checkpoint_reuse_envelope(expected_contract)
     status = "missing"
@@ -482,15 +505,20 @@ def _row_checkpoint_reuse(
             raw_entries = payload.get("batches")
             if isinstance(contract, Mapping) and isinstance(raw_entries, Mapping):
                 stored_entry_count = len(raw_entries)
-                mismatched_fields = [
-                    key
-                    for key, expected in expected_envelope.items()
-                    if contract.get(key) != expected
-                ]
-                if not mismatched_fields:
+                if payload.get("contract_sha256") != sha256_bytes(
+                    canonical_json_bytes(dict(contract))
+                ):
+                    status = "malformed"
+                else:
+                    mismatched_fields = [
+                        key
+                        for key, expected in expected_envelope.items()
+                        if contract.get(key) != expected
+                    ]
+                if status != "malformed" and not mismatched_fields:
                     status = "compatible"
                     entries = raw_entries
-                else:
+                elif status != "malformed":
                     status = "incompatible_request_envelope"
             else:
                 status = "malformed"
@@ -498,7 +526,12 @@ def _row_checkpoint_reuse(
             status = "malformed"
 
     reusable = sum(
-        _validated_row_checkpoint_entry(entries.get(batch.batch_id), batch=batch) is not None
+        _validated_row_checkpoint_entry(
+            entries.get(batch.batch_id),
+            batch=batch,
+            contract=expected_contract,
+        )
+        is not None
         for batch in plan.batches
     )
     return {
@@ -512,8 +545,8 @@ def _row_checkpoint_reuse(
         "basis": (
             "Mirrors pipeline row-checkpoint migration and rehydration: the request envelope "
             "and exact plan must match, then batch id, exact batch hash, typed records, call "
-            "telemetry, and the resolved/unresolved row partition must validate. Code remains "
-            "recorded for provenance but is not itself a provider-request input."
+            "telemetry, and the resolved/unresolved row partition must validate. The current "
+            "repair contract also requires an exact code binding."
         ),
     }
 
@@ -578,6 +611,9 @@ def build_next_run_row_plan_report(
         )
 
     config = config or RowEnumerationConfig()
+    from proceedings_to_eee.pipeline import _code_state
+
+    code_state = _code_state(project_root)
     papers: list[dict[str, Any]] = []
     for spec in corpus.papers:
         paper_dir = paper_dirs[spec.paper_id]
@@ -601,6 +637,7 @@ def build_next_run_row_plan_report(
             layout=layout,
             blocks=blocks,
             extractor_model=extractor_model,
+            code_state=code_state,
         )
         row_checkpoint = _row_checkpoint_reuse(
             paper_dir=paper_dir,
@@ -609,6 +646,7 @@ def build_next_run_row_plan_report(
             layout=layout,
             plan=plan,
             extractor_model=extractor_model,
+            code_state=code_state,
         )
         papers.append(
             {

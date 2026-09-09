@@ -23,10 +23,18 @@ Keep roles separate:
 - evaluation_instrument: a scorer, judge, classifier, or API used to measure another system.
 - label_generator: a system that generated reference labels.
 - human_reference: human annotations or experts used as reference.
+- Roles are local to one observation. If the current paper directly benchmarks a scorer,
+  judge, classifier, or API against human reference labels, that scorer is the
+  evaluated_system for the reported benchmark observation even if the paper uses it as
+  an evaluation_instrument elsewhere.
 
 Rules:
 1. Extract only claims visibly supported on the supplied page. Do not use outside knowledge.
-2. Copy evidence quotes verbatim from the page text. The quote must contain the raw value and enough row or sentence context to identify the system, dataset, and metric.
+2. Copy every evidence quote as one contiguous source line, verbatim from the supplied
+   page text. Never stitch together separated cells, headers, or lines. At least one
+   evidence anchor must contain the raw value. When system, dataset, metric, or scope
+   context lives on another line, add that line as a separate verbatim evidence anchor
+   and use the typed label, row, and column fields to preserve table structure.
 3. A single observation contains one value, one metric, one exact scope, and exactly one evaluated system for primary results. Split table rows into atomic cells.
 4. Keep printed units and scales. If the paper prints 73.4%, numeric is 73.4 and unit is percent; do not convert to 0.734. Preserve inequality or approximation semantics in comparator; for <0.001, numeric is 0.001 and comparator is less_than.
 5. A confidence interval belongs to its point estimate, not a second observation.
@@ -53,10 +61,13 @@ Dense-table row enumeration contract:
 - Every observation quote must be copied from that row's raw_text, and every value must
   occur in that same raw_text. Use the supplied caption and all header levels only as
   context for interpreting columns, metrics, and scope.
+- Each value_position names a physical cell, an exact numeric token, and its ordered
+  multilevel header_path. Treat ambiguous header bindings as uncertain; never choose a
+  conflicting metric, scope, setting, or unit from another header path.
 """
 )
 
-_ROW_PROMPT_TEMPLATE_VERSION = "table-row-prompt/0.1"
+_ROW_PROMPT_TEMPLATE_VERSION = "table-row-prompt/0.2"
 
 
 def page_prompt(*, paper_title: str, paper_id: str, fragment: PageFragment) -> str:
@@ -69,7 +80,7 @@ source_id: {fragment.source_id}
 page: {fragment.page}
 fragment_id: {fragment.fragment_id}
 
-Extract every independently reportable evaluation observation in this bounded source fragment. A fragment can contain repeated table/header context from the same page; do not emit that context as a result. Fragments can contain no observations; return an empty list when appropriate. Preserve layout spaces in evidence quotes.
+Extract every independently reportable evaluation observation in this bounded source fragment. A fragment can contain repeated table/header context from the same page; do not emit that context as a result. Emit observations only for values inside RESULT BLOCK text, never for values repeated only inside LEADING CONTEXT or TRAILING CONTEXT. Fragments can contain no observations; return an empty list when appropriate. Preserve layout spaces in evidence quotes.
 
 <PAGE_TEXT>
 {fragment.text}

@@ -11,6 +11,14 @@ from typing import Any
 
 __all__ = ["render_corpus_html", "render_corpus_html_file"]
 
+_PROVIDER_STAGE_NAMES = (
+    "extractor",
+    "row_enumeration",
+    "tuple_resolution",
+    "verifier",
+    "origin_retrieval",
+)
+
 
 def _first(mapping: Mapping[str, Any], *keys: str, default: Any = None) -> Any:
     for key in keys:
@@ -103,16 +111,21 @@ def _provider_cost(run: Mapping[str, Any]) -> float:
     explicit = _first(run, "cost_usd", "total_cost_usd", "cost")
     if explicit is not None:
         return _non_negative_float(explicit, "cost_usd")
+    lower_bound = run.get("cost_usd_lower_bound")
+    if lower_bound is not None:
+        return _non_negative_float(lower_bound, "cost_usd_lower_bound")
     total = 0.0
-    for stage_name in ("extractor", "verifier"):
+    for stage_name in _PROVIDER_STAGE_NAMES:
         stage = run.get(stage_name)
         if not isinstance(stage, Mapping):
             continue
-        telemetry = stage.get("successful_call_telemetry")
+        telemetry = stage.get("completed_call_telemetry")
+        if not isinstance(telemetry, Mapping):
+            telemetry = stage.get("successful_call_telemetry")
         if isinstance(telemetry, Mapping):
             total += _non_negative_float(
                 telemetry.get("cost_usd_lower_bound"),
-                f"{stage_name}.successful_call_telemetry.cost_usd_lower_bound",
+                f"{stage_name}.provider_call_telemetry.cost_usd_lower_bound",
             )
             continue
         calls: list[Any] = []
@@ -129,6 +142,50 @@ def _provider_cost(run: Mapping[str, Any]) -> float:
                 call.get("cost_usd"), f"{stage_name}.calls[{index}].cost_usd"
             )
     return total
+
+
+def _provider_usage(run: Mapping[str, Any]) -> dict[str, int]:
+    """Aggregate completed-call lower bounds over the full five-stage chain."""
+
+    totals = {"calls": 0, "total_tokens": 0, "retries": 0}
+    for stage_name in _PROVIDER_STAGE_NAMES:
+        stage = run.get(stage_name)
+        if not isinstance(stage, Mapping):
+            continue
+        telemetry = stage.get("completed_call_telemetry")
+        if not isinstance(telemetry, Mapping):
+            telemetry = stage.get("successful_call_telemetry")
+        if isinstance(telemetry, Mapping):
+            totals["calls"] += _non_negative_int(
+                telemetry.get("calls"), f"{stage_name} completed calls"
+            )
+            totals["total_tokens"] += _non_negative_int(
+                telemetry.get("total_tokens_lower_bound"),
+                f"{stage_name} total tokens",
+            )
+            totals["retries"] += _non_negative_int(
+                telemetry.get("retries_lower_bound"), f"{stage_name} retries"
+            )
+            continue
+        calls: list[Any] = []
+        for field in ("calls", "resumed_calls"):
+            raw_calls = stage.get(field)
+            if isinstance(raw_calls, Sequence) and not isinstance(
+                raw_calls, str | bytes | bytearray
+            ):
+                calls.extend(raw_calls)
+        totals["calls"] += len(calls)
+        for index, call in enumerate(calls):
+            if not isinstance(call, Mapping):
+                raise ValueError(f"{stage_name}.calls items must be objects")
+            totals["total_tokens"] += _non_negative_int(
+                call.get("total_tokens"), f"{stage_name}.calls[{index}].total_tokens"
+            )
+            attempts = _non_negative_int(
+                call.get("attempts"), f"{stage_name}.calls[{index}].attempts"
+            )
+            totals["retries"] += max(0, attempts - 1)
+    return totals
 
 
 def _paper_projection(run: Mapping[str, Any], index: int) -> dict[str, Any]:
@@ -171,12 +228,8 @@ def _paper_projection(run: Mapping[str, Any], index: int) -> dict[str, Any]:
         "wall_clock_seconds",
     )
     extractor = run.get("extractor") if isinstance(run.get("extractor"), Mapping) else {}
-    telemetry = (
-        extractor.get("successful_call_telemetry") if isinstance(extractor, Mapping) else None
-    )
+    provider_usage = _provider_usage(run)
     execution = extractor.get("execution") if isinstance(extractor, Mapping) else None
-    if not isinstance(telemetry, Mapping):
-        telemetry = {}
     if not isinstance(execution, Mapping):
         execution = {}
     return {
@@ -191,11 +244,9 @@ def _paper_projection(run: Mapping[str, Any], index: int) -> dict[str, Any]:
         "spot_total": spot_total,
         "cost": _provider_cost(run),
         "runtime": runtime,
-        "successful_calls": _non_negative_int(telemetry.get("calls"), "successful calls"),
-        "total_tokens": _non_negative_int(
-            telemetry.get("total_tokens_lower_bound"), "total tokens"
-        ),
-        "retries": _non_negative_int(telemetry.get("retries_lower_bound"), "retries"),
+        "completed_calls": provider_usage["calls"],
+        "total_tokens": provider_usage["total_tokens"],
+        "retries": provider_usage["retries"],
         "failed_blocks": _non_negative_int(execution.get("blocks_failed"), "failed blocks"),
         "resumed_blocks": _non_negative_int(execution.get("blocks_resumed"), "resumed blocks"),
     }
@@ -277,7 +328,7 @@ def render_corpus_html(corpus_run: Mapping[str, Any]) -> str:
         "spot_total": sum(paper["spot_total"] for paper in papers),
         "cost": sum(paper["cost"] for paper in papers),
         "runtime": sum(paper["runtime"] for paper in papers),
-        "successful_calls": sum(paper["successful_calls"] for paper in papers),
+        "completed_calls": sum(paper["completed_calls"] for paper in papers),
         "total_tokens": sum(paper["total_tokens"] for paper in papers),
         "retries": sum(paper["retries"] for paper in papers),
         "failed_blocks": sum(paper["failed_blocks"] for paper in papers),
@@ -407,8 +458,8 @@ def render_corpus_html(corpus_run: Mapping[str, Any]) -> str:
       <strong>{totals["schema_errors"]:,}</strong></div>
     <div class="card"><span>Spot-checks</span><strong>{spot_total}</strong></div>
     <div class="card"><span>Cost</span><strong>{_format_cost(totals["cost"])}</strong></div>
-    <div class="card"><span>Successful calls</span>
-      <strong>{totals["successful_calls"]:,}</strong></div>
+    <div class="card"><span>Completed calls</span>
+      <strong>{totals["completed_calls"]:,}</strong></div>
     <div class="card"><span>Tokens</span><strong>{totals["total_tokens"]:,}+</strong></div>
     <div class="card"><span>Retries / failed blocks</span>
       <strong>{totals["retries"]:,} / {totals["failed_blocks"]:,}</strong></div>
@@ -430,8 +481,9 @@ def render_corpus_html(corpus_run: Mapping[str, Any]) -> str:
 {table_body}
     </tbody>
   </table></section>
-  <footer>Aggregate values are recomputed from paper runs. Cost, token, retry, and
-    attempt totals are lower bounds when failed or superseded provider calls are unavailable.
+  <footer>Aggregate values are recomputed from paper runs across all five provider stages.
+    Cost, token, retry, and completed-call totals are lower bounds when provider telemetry is
+    unavailable.
     Raw source text is not embedded.</footer>
 </main></body>
 </html>

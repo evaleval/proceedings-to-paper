@@ -5,7 +5,10 @@ import hashlib
 import pytest
 
 from proceedings_to_eee.domain.observation import CandidateObservation
-from proceedings_to_eee.evaluation.control_coverage import control_examination
+from proceedings_to_eee.evaluation.control_coverage import (
+    control_examination,
+    observation_examination,
+)
 from proceedings_to_eee.evaluation.control_proposals import propose_controls, worklist
 from proceedings_to_eee.evaluation.reference_score import (
     CONTROL_EXAMINATION_UNKNOWN,
@@ -15,7 +18,10 @@ from proceedings_to_eee.evaluation.reference_score import (
     score_reference,
 )
 from proceedings_to_eee.extraction.pdf_layout import PageFragment, PdfLayout
-from proceedings_to_eee.extraction.result_blocks import segment_page_result_blocks
+from proceedings_to_eee.extraction.result_blocks import (
+    ResultBlockConfig,
+    segment_page_result_blocks,
+)
 from proceedings_to_eee.reference import PaperReference
 
 # The invented table draws a block; the sample-count sentence sits far enough below it
@@ -136,6 +142,24 @@ OUT_OF_BLOCK_CONTROL = {
 }
 
 
+CONTEXT_ONLY_CONTROL = {
+    "evidence": {
+        "evidence_id": "ev-header",
+        "purpose": "negative_control",
+        "page": 13,
+        "kind": "table",
+        "label": "Table 2",
+        "exact_quote": "Model                            ROC-AUC",
+    },
+    "control": {
+        "control_id": "nc-header",
+        "expected_claim_type": "method_metadata",
+        "evidence_ids": ["ev-header"],
+        "reason_not_primary": "A table header is not a result row.",
+    },
+}
+
+
 def test_a_control_inside_an_extracted_block_counts_as_examined() -> None:
     page = _page()
     blocks = segment_page_result_blocks(page)
@@ -152,10 +176,104 @@ def test_a_control_outside_every_block_counts_as_not_examined() -> None:
     assert examined == {"nc-dataset-size": False}
 
 
+def test_context_only_control_is_not_credited_as_examined() -> None:
+    """Prompt context is visible but explicitly ineligible for result emission."""
+
+    page = _page()
+    blocks = segment_page_result_blocks(page)
+
+    examined = control_examination(_reference([CONTEXT_ONLY_CONTROL]), _layout(page), blocks)
+
+    assert examined == {"nc-header": False}
+
+
+def test_evidence_straddling_nonoverlapping_dense_chunks_is_not_examined() -> None:
+    text = (
+        "Table 9. Dense benchmark results.\n"
+        "System             Accuracy\n"
+        "Atlas                  0.91\n"
+        "Boreal                 0.88\n"
+        "Cedar                  0.77\n"
+    )
+    page = _page(text)
+    control = {
+        "evidence": {
+            "evidence_id": "ev-straddling",
+            "purpose": "negative_control",
+            "page": 13,
+            "kind": "table",
+            "label": "Table 9",
+            "exact_quote": "Atlas                  0.91\nBoreal                 0.88",
+        },
+        "control": {
+            "control_id": "nc-straddling",
+            "expected_claim_type": "secondary_claim",
+            "evidence_ids": ["ev-straddling"],
+            "reason_not_primary": "Fixture spanning two physical result rows.",
+        },
+    }
+    blocks = segment_page_result_blocks(
+        page,
+        ResultBlockConfig(max_data_rows=1, max_blocks_per_page=None),
+    )
+
+    assert len(blocks) > 1
+    examined = control_examination(_reference([control]), _layout(page), blocks)
+
+    assert examined == {"nc-straddling": False}
+
+
 def test_a_control_with_no_blocks_at_all_counts_as_not_examined() -> None:
     page = _page()
     examined = control_examination(_reference([IN_BLOCK_CONTROL]), _layout(page), [])
     assert examined == {"nc-leaderboard": False}
+
+
+def test_positive_reference_examination_uses_the_same_block_boundary() -> None:
+    page = _page()
+    examined = observation_examination(
+        _reference([]),
+        _layout(page),
+        segment_page_result_blocks(page),
+    )
+
+    assert examined == {"ref-target": True}
+
+
+def test_visual_only_positive_is_pipeline_unobservable_not_a_model_miss() -> None:
+    page = _page()
+    raw = _reference([]).model_dump(mode="json")
+    raw["evidence"][0].update(
+        {
+            "exact_quote": "Visually read score 0.742",
+            "verification_mode": "visual",
+            "visual_reviewed": True,
+        }
+    )
+    reference = PaperReference.model_validate(raw)
+    examined = observation_examination(
+        reference,
+        _layout(page),
+        segment_page_result_blocks(page),
+    )
+
+    assert examined == {"ref-target": False}
+    score = score_reference(reference, [], {}, examined)
+    assert score["detection"]["recall_basis"] == 1
+    assert score["detection"]["false_negatives"] == 1
+    assert score["input_observability"] == {
+        "status": "measured",
+        "reference_observations": 1,
+        "observable_reference_observations": 0,
+        "unobservable_reference_observations": 1,
+        "observation_coverage": 0.0,
+        "model_conditional_detection": {
+            "true_positives": 0,
+            "false_negatives": 0,
+            "recall_basis": 0,
+            "recall": None,
+        },
+    }
 
 
 def test_examined_and_declined_is_a_measured_pass_not_an_unmeasured_gap() -> None:
@@ -177,6 +295,20 @@ def test_never_examined_stays_unmeasured() -> None:
     safety = score["negative_control_safety"]
     assert safety["control_status"]["nc-leaderboard"] == CONTROL_NOT_EXAMINED
     assert safety["measurement_status"] == "not_measured"
+    assert safety["zero_false_primary_gate_passed"] is None
+
+
+def test_partially_examined_controls_do_not_overstate_a_full_gate_pass() -> None:
+    score = score_reference(
+        _reference([IN_BLOCK_CONTROL, OUT_OF_BLOCK_CONTROL]),
+        [],
+        {"nc-leaderboard": True, "nc-dataset-size": False},
+    )
+    safety = score["negative_control_safety"]
+    assert safety["measurement_status"] == "partially_measured"
+    assert safety["examined_control_ids"] == ["nc-leaderboard"]
+    assert safety["not_examined_control_ids"] == ["nc-dataset-size"]
+    assert safety["control_examination_coverage"] == pytest.approx(0.5)
     assert safety["zero_false_primary_gate_passed"] is None
 
 

@@ -507,10 +507,71 @@ def _full_width_runs(
         while end + 1 < len(grids) and grids[end + 1] and len(shared & grids[end + 1]) >= 2:
             shared &= grids[end + 1]
             end += 1
-        if end - index + 1 >= 3:
+        if end - index + 1 >= 3 and not _has_parallel_table_boundary(
+            lines,
+            index,
+            end,
+            gutter,
+            config,
+        ):
             runs.append(_extend_full_width_run(lines, index, end, config))
         index = end + 1
     return runs
+
+
+def _first_header_cell(text: str) -> str | None:
+    """Return a normalized leading cell only for a plausible table-header line."""
+
+    if not _is_table_header_line(text):
+        return None
+    cells = [cell for cell in re.split(r"\s{2,}", text.strip()) if cell]
+    if not cells:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", " ", cells[0].casefold()).strip()
+    return normalized or None
+
+
+def _matching_header_cells(left: str | None, right: str | None) -> bool:
+    """Match repeated panel headers despite a gutter consuming one edge character."""
+
+    if left is None or right is None:
+        return False
+    if left == right:
+        return True
+    shorter, longer = sorted((left, right), key=len)
+    return len(shorter) >= 4 and len(longer) - len(shorter) <= 2 and longer.endswith(shorter)
+
+
+def _has_parallel_table_boundary(
+    lines: list[str],
+    start: int,
+    end: int,
+    gutter: tuple[int, int],
+    config: ResultBlockConfig,
+) -> bool:
+    """Reject a false full-width run made from two independent parallel tables.
+
+    Two side-by-side numeric tables can mimic one stable grid across the page gutter.
+    Independent captions on both sides, or a repeated leading header cell on both
+    sides, are stronger evidence that the panels own separate tables.  The bounded
+    search covers the same nearby header/caption context used by block materialization.
+    """
+
+    gutter_start, gutter_end = gutter
+    lower = max(0, start - config.context_lines)
+    upper = min(len(lines) - 1, end + config.trailing_context_lines + 1)
+    for line in lines[lower : upper + 1]:
+        left = line[:gutter_start].strip()
+        right = line[gutter_end + 1 :].strip()
+        if not left or not right:
+            continue
+        if _CAPTION_ANY.search(left) and _CAPTION_ANY.search(right):
+            return True
+        left_header = _first_header_cell(left)
+        right_header = _first_header_cell(right)
+        if _matching_header_cells(left_header, right_header):
+            return True
+    return False
 
 
 def _extend_full_width_run(
@@ -956,7 +1017,19 @@ def _drafts_for_cluster(
         if end >= body_end:
             break
         previous_end = end
-        next_cursor = max(cursor + 1, end - config.overlap_lines + 1)
+        # Repeating a dense result row asks the model to emit the same physical cells
+        # again and makes exact deduplication depend on model wording.  Table headers
+        # remain in the explicit context span, while prose retains its bounded overlap
+        # so a sentence split at a chunk boundary is still recoverable.
+        overlap_start = max(cursor + 1, end - config.overlap_lines + 1)
+        tabular_indexes = [
+            index for index in range(cursor, end + 1) if features[index].is_tabular_data
+        ]
+        # Never repeat a physical table row, but retain the configured overlap from a
+        # trailing prose suffix in a mixed table/prose cluster.
+        next_cursor = (
+            max(overlap_start, tabular_indexes[-1] + 1) if tabular_indexes else overlap_start
+        )
         cursor = next_cursor
     return drafts
 

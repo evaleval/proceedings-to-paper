@@ -5,10 +5,9 @@ pipeline looked at the region and correctly declined to turn it into a result, w
 the safety property the control exists to test. It can also mean the region was never
 put in front of the extractor at all, which says nothing.
 
-Collapsing those two into "no match" is what left the holdout's safety gates unmeasurable
-on nine of ten papers. This module separates them deterministically: a control counts as
-examined when a bounded result block that was actually sent for extraction covers the
-lines its evidence quote occupies.
+This module distinguishes those cases deterministically: a control counts as examined
+when a bounded result block that was actually sent for extraction covers the lines its
+evidence quote occupies. An unexamined control cannot establish the safety property.
 """
 
 from __future__ import annotations
@@ -20,19 +19,17 @@ from proceedings_to_eee.reference import PaperReference, ReferenceEvidence
 
 
 def _block_line_ranges(blocks: list[ResultBlock]) -> dict[int, list[tuple[int, int]]]:
-    """Every page line range that was sent to the extractor, by page."""
+    """Every output-eligible result-body range, by page.
+
+    Leading and trailing context are sent to the provider, but the extraction contract
+    explicitly forbids emitting values that occur only there. Counting context-only
+    evidence as examined would therefore credit abstention where the model had no valid
+    opportunity to emit the annotated item.
+    """
 
     ranges: dict[int, list[tuple[int, int]]] = {}
     for block in blocks:
-        spans = [(block.body_start_line, block.body_end_line)]
-        if block.context_start_line is not None and block.context_end_line is not None:
-            spans.append((block.context_start_line, block.context_end_line))
-        if (
-            block.trailing_context_start_line is not None
-            and block.trailing_context_end_line is not None
-        ):
-            spans.append((block.trailing_context_start_line, block.trailing_context_end_line))
-        ranges.setdefault(block.page, []).extend(spans)
+        ranges.setdefault(block.page, []).append((block.body_start_line, block.body_end_line))
     return ranges
 
 
@@ -56,7 +53,7 @@ def control_examination(
     layout: PdfLayout,
     blocks: list[ResultBlock],
 ) -> dict[str, bool]:
-    """Map each control id to whether an extracted block covered its evidence lines.
+    """Map each control id to whether a successful result body covered its evidence.
 
     A control whose quote cannot be located in the layout at all is reported as not
     examined. That is the conservative reading: an annotation transcribed from the
@@ -78,10 +75,49 @@ def control_examination(
                 continue
             start, end = lines
             if any(
-                block_start <= end and start <= block_end
+                block_start <= start and end <= block_end
                 for block_start, block_end in ranges.get(evidence.page, ())
             ):
                 covered = True
                 break
         examined[control.control_id] = covered
+    return examined
+
+
+def observation_examination(
+    reference: PaperReference,
+    layout: PdfLayout,
+    blocks: list[ResultBlock],
+) -> dict[str, bool]:
+    """Map each positive reference to whether its result evidence was output-eligible.
+
+    This is the positive-target analogue of :func:`control_examination`.  It keeps two
+    denominators explicit: end-to-end text-pipeline coverage includes every annotated
+    target, while model-conditional recall includes only targets whose result evidence
+    occurred in a bounded block that was actually sent.  Visual-only evidence that has
+    no location in the frozen text layout therefore remains an honest pipeline coverage
+    miss without being misreported as a model miss on input the model never received.
+    """
+
+    indexes = build_region_index(layout)
+    ranges = _block_line_ranges(blocks)
+    evidence_by_id = {item.evidence_id: item for item in reference.evidence}
+    examined: dict[str, bool] = {}
+    for observation in reference.observations:
+        covered = False
+        for evidence_id in observation.result_evidence_ids:
+            evidence = evidence_by_id.get(evidence_id)
+            if evidence is None:
+                continue
+            lines = _evidence_lines(evidence, layout, indexes)
+            if lines is None:
+                continue
+            start, end = lines
+            if any(
+                block_start <= start and end <= block_end
+                for block_start, block_end in ranges.get(evidence.page, ())
+            ):
+                covered = True
+                break
+        examined[observation.reference_id] = covered
     return examined

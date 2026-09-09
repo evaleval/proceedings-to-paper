@@ -11,9 +11,13 @@ import pytest
 import proceedings_to_eee.providers.openrouter as openrouter_module
 from proceedings_to_eee.providers.openrouter import (
     OpenRouterClient,
+    ProviderCall,
+    ProviderPayloadValidationKeyword,
     ProviderRequestRejectedError,
     ProviderResponseValidationError,
+    completion_token_parameter_for_model,
     openrouter_structural_schema,
+    public_provider_call,
     structured_request_contract,
     structured_request_contract_from_call,
 )
@@ -184,16 +188,33 @@ def test_structured_request_contract_is_available_before_provider_call() -> None
     }
 
 
+def test_materialized_request_contract_binds_logical_limit_and_wire_parameter() -> None:
+    contract = structured_request_contract(
+        schema_name="answer_schema",
+        schema=SCHEMA,
+        seed=None,
+        require_parameters=True,
+        model="openai/gpt-5.5",
+        max_tokens=321,
+    )
+
+    assert contract["schema_version"] == "provider-request-contract/0.2"
+    assert contract["max_tokens"] == 321
+    assert contract["completion_token_parameter"] == "max_completion_tokens"
+
+
 def test_strict_json_success_records_complete_secret_free_telemetry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = {"answer": 42}
+    envelope = _envelope(json.dumps(payload))
+    envelope["usage"]["completion_tokens_details"] = {"reasoning_tokens": 3}
     calls = _install_fake_http(
         monkeypatch,
         [
             _response(
                 200,
-                envelope=_envelope(json.dumps(payload)),
+                envelope=envelope,
                 headers={"x-request-id": "request-header-id"},
             )
         ],
@@ -232,6 +253,8 @@ def test_strict_json_success_records_complete_secret_free_telemetry(
     assert request["json"]["temperature"] == 0.0
     assert request["json"]["reasoning"] == {"effort": "minimal", "exclude": True}
     assert request["json"]["seed"] == 17
+    assert request["json"]["max_tokens"] == 321
+    assert "max_completion_tokens" not in request["json"]
 
     prompt = json.dumps(
         [
@@ -256,6 +279,7 @@ def test_strict_json_success_records_complete_secret_free_telemetry(
     assert result.call.temperature == 0.0
     assert result.call.reasoning_effort == "minimal"
     assert result.call.max_tokens == 321
+    assert result.call.completion_token_parameter == "max_tokens"
     assert result.call.seed == 17
     assert result.call.response_format == "json_schema"
     assert result.call.schema_name == "answer_schema"
@@ -267,6 +291,7 @@ def test_strict_json_success_records_complete_secret_free_telemetry(
     assert result.call.latency_seconds == 0.375
     assert result.call.input_tokens == 11
     assert result.call.output_tokens == 7
+    assert result.call.reasoning_tokens == 3
     assert result.call.total_tokens == 18
     assert result.call.cost_usd == 0.00125
     assert result.call.request_id == "request-header-id"
@@ -275,7 +300,7 @@ def test_strict_json_success_records_complete_secret_free_telemetry(
     assert API_KEY not in result.call.model_dump_json()
     contract = structured_request_contract_from_call(result.call)
     assert contract == {
-        "schema_version": "provider-request-contract/0.1",
+        "schema_version": "provider-request-contract/0.2",
         "privacy": {"data_collection": "deny", "zdr": True},
         "routing": {"require_parameters": False},
         "schema": {
@@ -285,8 +310,214 @@ def test_strict_json_success_records_complete_secret_free_telemetry(
             "schema_strict": True,
         },
         "seed": 17,
+        "max_tokens": 321,
+        "completion_token_parameter": "max_tokens",
     }
     assert API_KEY not in json.dumps(contract)
+
+
+def test_openai_uses_supported_completion_token_wire_parameter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _install_fake_http(
+        monkeypatch,
+        [_response(200, envelope=_envelope('{"answer": 42}', model="openai/gpt-5.5"))],
+    )
+
+    result = _structured_chat(
+        OpenRouterClient(api_key=API_KEY, max_attempts=1, require_parameters=True),
+        model="openai/gpt-5.5",
+    )
+
+    assert calls[0]["json"]["max_completion_tokens"] == 321
+    assert "max_tokens" not in calls[0]["json"]
+    assert result.call.max_tokens == 321
+    assert result.call.completion_token_parameter == "max_completion_tokens"
+    assert result.call.model_dump(mode="json")["completion_token_parameter"] == (
+        "max_completion_tokens"
+    )
+
+
+def test_provider_call_rejects_tampered_completion_token_materialization() -> None:
+    with pytest.raises(ValueError, match="completion_token_parameter"):
+        ProviderCall(
+            model_requested="openai/gpt-5.5",
+            prompt_sha256="1" * 64,
+            response_sha256="2" * 64,
+            temperature=None,
+            max_tokens=321,
+            completion_token_parameter="max_tokens",
+            seed=None,
+            schema_name="answer_schema",
+            schema_sha256="3" * 64,
+            latency_seconds=0.1,
+            attempts=1,
+        )
+
+
+def test_provider_call_rejects_missing_completion_token_materialization() -> None:
+    with pytest.raises(ValueError, match="completion_token_parameter"):
+        ProviderCall(
+            model_requested="openai/gpt-5.5",
+            prompt_sha256="1" * 64,
+            response_sha256="2" * 64,
+            temperature=None,
+            max_tokens=321,
+            seed=None,
+            schema_name="answer_schema",
+            schema_sha256="3" * 64,
+            latency_seconds=0.1,
+            attempts=1,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_tokens", 0),
+        ("max_tokens", True),
+        ("temperature", float("nan")),
+        ("temperature", "NaN"),
+        ("seed", True),
+        ("require_parameters", 1),
+        ("zdr", "false"),
+        ("provider", "other"),
+        ("model_requested", ""),
+        ("model_requested", "requested model"),
+        ("model_requested", " requested/model"),
+        ("schema_name", ""),
+        ("schema_name", "schema name"),
+        ("reasoning_effort", ""),
+        ("reasoning_effort", 1),
+        ("prompt_sha256", "not-a-hash"),
+        ("response_sha256", "not-a-hash"),
+        ("latency_seconds", -0.1),
+        ("latency_seconds", float("nan")),
+        ("input_tokens", -1),
+        ("input_tokens", True),
+        ("output_tokens", -1),
+        ("total_tokens", -1),
+        ("cost_usd", -0.1),
+        ("cost_usd", float("inf")),
+        ("cost_usd", True),
+        ("attempts", True),
+    ],
+)
+def test_provider_call_rejects_invalid_numeric_telemetry(field: str, value: Any) -> None:
+    payload: dict[str, Any] = {
+        "model_requested": "requested/model",
+        "prompt_sha256": "1" * 64,
+        "response_sha256": "2" * 64,
+        "temperature": None,
+        "max_tokens": 321,
+        "completion_token_parameter": "max_tokens",
+        "seed": None,
+        "schema_name": "answer_schema",
+        "schema_sha256": "3" * 64,
+        "latency_seconds": 0.1,
+        "attempts": 1,
+    }
+    payload[field] = value
+
+    with pytest.raises(ValueError):
+        ProviderCall.model_validate(payload)
+
+
+def test_public_call_projection_omits_untrusted_returned_metadata_and_request_id() -> None:
+    private_marker = "PRIVATE-RETURNED-METADATA"
+    call = ProviderCall(
+        model_requested="requested/model",
+        model_returned=f"different/{private_marker}",
+        provider_returned=private_marker,
+        prompt_sha256="1" * 64,
+        response_sha256="2" * 64,
+        temperature=None,
+        max_tokens=321,
+        completion_token_parameter="max_tokens",
+        seed=None,
+        schema_name="answer_schema",
+        schema_sha256="3" * 64,
+        latency_seconds=0.1,
+        cost_usd=0.01,
+        request_id=f"request-{private_marker}",
+        finish_reason=private_marker,
+        attempts=1,
+    )
+
+    public = public_provider_call(call)
+
+    assert public["schema_version"] == "public-provider-call/0.1"
+    assert public["model_returned"] is None
+    assert public["model_returned_disposition"] == "unrecognized_omitted"
+    assert public["provider_returned"] is None
+    assert public["provider_returned_disposition"] == "unrecognized_omitted"
+    assert public["finish_category"] == "other"
+    assert public["request_id_observed"] is True
+    assert {key for key in public if key.startswith("request_id")} == {"request_id_observed"}
+    assert public["request_contract"]["max_tokens"] == 321
+    assert public["request_contract"]["completion_token_parameter"] == "max_tokens"
+    assert private_marker not in json.dumps(public)
+
+
+def test_public_call_projection_retains_only_safe_exact_response_labels() -> None:
+    call = ProviderCall(
+        model_requested="requested/model",
+        model_returned="requested/model",
+        provider_returned="OpenAI",
+        prompt_sha256="1" * 64,
+        response_sha256="2" * 64,
+        temperature=0.0,
+        max_tokens=321,
+        completion_token_parameter="max_tokens",
+        seed=7,
+        schema_name="answer_schema",
+        schema_sha256="3" * 64,
+        latency_seconds=0.1,
+        finish_reason="stop",
+        attempts=1,
+    )
+
+    public = public_provider_call(call)
+
+    assert public["model_returned"] == "requested/model"
+    assert public["model_returned_disposition"] == "matches_requested"
+    assert public["provider_returned"] == "OpenAI"
+    assert public["provider_returned_disposition"] == "known_label"
+    assert public["finish_category"] == "stop"
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("openai/gpt-5.6-luna", "max_completion_tokens"),
+        ("~openai/gpt-5.5", "max_completion_tokens"),
+        ("google/gemini-3.7-flash", "max_tokens"),
+        ("qwen/qwen3.8-2.4t-a95b", "max_tokens"),
+        ("anthropic/claude-sonnet-5", "max_tokens"),
+    ],
+)
+def test_completion_token_parameter_is_deterministic_from_model_id(
+    model: str, expected: str
+) -> None:
+    assert completion_token_parameter_for_model(model) == expected
+
+
+@pytest.mark.parametrize("model", ["", "openai", "/gpt-5.5", "openai/"])
+def test_completion_token_parameter_rejects_invalid_model_ids(model: str) -> None:
+    with pytest.raises(ValueError, match="author/model"):
+        completion_token_parameter_for_model(model)
+
+
+def test_request_headers_identify_public_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _install_fake_http(
+        monkeypatch,
+        [_response(200, envelope=_envelope('{"answer": 42}'))],
+    )
+
+    _structured_chat(OpenRouterClient(api_key=API_KEY, max_attempts=1))
+
+    assert calls[0]["headers"]["HTTP-Referer"] == ("https://github.com/evaleval/proceedings-to-paper")
+    assert calls[0]["headers"]["X-Title"] == "Proceedings to EEE"
 
 
 def test_require_parameters_client_default_can_be_overridden_per_call(
@@ -319,8 +550,6 @@ def test_require_parameters_client_default_can_be_overridden_per_call(
 def test_content_list_text_fragments_are_joined(monkeypatch: pytest.MonkeyPatch) -> None:
     content = [
         {"type": "text", "text": '{"answer":'},
-        {"type": "image_url", "image_url": {"url": "ignored"}},
-        "ignored non-object fragment",
         {"type": "text", "text": " 42}"},
     ]
     _install_fake_http(monkeypatch, [_response(200, envelope=_envelope(content))])
@@ -328,6 +557,32 @@ def test_content_list_text_fragments_are_joined(monkeypatch: pytest.MonkeyPatch)
     result = _structured_chat(OpenRouterClient(api_key=API_KEY, max_attempts=1))
 
     assert result.payload == {"answer": 42}
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        [],
+        ["non-object fragment"],
+        [{"type": "image_url", "image_url": {"url": "missing-text"}}],
+        [{"type": "text", "text": None}],
+    ],
+)
+def test_malformed_content_list_is_a_typed_paid_response_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    content: list[Any],
+) -> None:
+    _install_fake_http(monkeypatch, [_response(200, envelope=_envelope(content))])
+
+    with pytest.raises(ProviderResponseValidationError) as exc_info:
+        _structured_chat(OpenRouterClient(api_key=API_KEY, max_attempts=1))
+
+    assert exc_info.value.code == "invalid_json"
+    assert exc_info.value.validation_keyword is (
+        ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_MALFORMED_LIST
+    )
+    assert exc_info.value.call.cost_usd == 0.00125
+    assert exc_info.value.call.total_tokens == 18
 
 
 def test_numeric_bounds_are_removed_only_from_openrouter_schema_and_enforced_locally(
@@ -422,12 +677,14 @@ def test_truncated_structured_content_retains_secret_free_call_telemetry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     truncated = f'{{"answer": 4, "credential": "{API_KEY}'
+    envelope = _envelope(truncated)
+    envelope["usage"]["completion_tokens_details"] = {"reasoning_tokens": 5}
     _install_fake_http(
         monkeypatch,
         [
             _response(
                 200,
-                envelope=_envelope(truncated),
+                envelope=envelope,
                 headers={"x-request-id": "truncated-request"},
             )
         ],
@@ -441,9 +698,14 @@ def test_truncated_structured_content_retains_secret_free_call_telemetry(
 
     call = exc_info.value.call
     assert exc_info.value.code == "invalid_json"
+    assert (
+        exc_info.value.validation_keyword
+        is ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_INVALID_JSON
+    )
     assert call.response_sha256 == hashlib.sha256(truncated.encode()).hexdigest()
     assert call.input_tokens == 11
     assert call.output_tokens == 7
+    assert call.reasoning_tokens == 5
     assert call.total_tokens == 18
     assert call.cost_usd == 0.00125
     assert call.request_id == "truncated-request"
@@ -485,6 +747,8 @@ def test_invalid_schema_payload_retains_paid_call_telemetry(
     assert call.finish_reason == "stop"
     assert call.attempts == 1
     assert exc_info.value.code == "schema_validation"
+    assert exc_info.value.validation_path == ("answer",)
+    assert exc_info.value.validation_keyword == "type"
     assert API_KEY not in _exception_chain_text(exc_info.value)
     assert API_KEY not in call.model_dump_json()
 
@@ -503,21 +767,132 @@ def test_invalid_outer_json_raises_stable_error(monkeypatch: pytest.MonkeyPatch)
         _structured_chat(OpenRouterClient(api_key=API_KEY, max_attempts=1))
 
     assert exc_info.value.code == "invalid_json"
+    assert (
+        exc_info.value.validation_keyword
+        is ProviderPayloadValidationKeyword.OUTER_ENVELOPE_INVALID_JSON
+    )
     assert exc_info.value.call.response_sha256 == hashlib.sha256(raw_response.encode()).hexdigest()
     assert exc_info.value.call.request_id == "outer-json-request"
 
 
-def test_refusal_is_reported_without_echoing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("envelope", "keyword"),
+    [
+        (
+            ["not", "an", "object"],
+            ProviderPayloadValidationKeyword.OUTER_ENVELOPE_NON_OBJECT,
+        ),
+        ({}, ProviderPayloadValidationKeyword.OUTER_ENVELOPE_MALFORMED),
+        (
+            {
+                **_envelope('{"answer": 42}'),
+                "choices": [{"message": {}, "finish_reason": "stop"}],
+            },
+            ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_MISSING,
+        ),
+        (_envelope(None), ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_NULL),
+        (
+            _envelope("[1, 2]"),
+            ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_NON_OBJECT,
+        ),
+    ],
+)
+def test_invalid_response_shapes_have_payload_blind_stable_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    envelope: Any,
+    keyword: ProviderPayloadValidationKeyword,
+) -> None:
+    request = httpx.Request("POST", "https://openrouter.test/chat/completions")
+    response = httpx.Response(200, json=envelope, request=request)
+    _install_fake_http(monkeypatch, [response])
+
+    with pytest.raises(ProviderResponseValidationError) as exc_info:
+        _structured_chat(OpenRouterClient(api_key=API_KEY, max_attempts=1))
+
+    assert exc_info.value.code == "invalid_json"
+    assert exc_info.value.validation_keyword is keyword
+    assert exc_info.value.validation_path == ()
+    diagnostic = {
+        "code": exc_info.value.code,
+        "validation_keyword": exc_info.value.validation_keyword,
+        "validation_path": exc_info.value.validation_path,
+    }
+    assert "answer" not in json.dumps(diagnostic)
+
+
+@pytest.mark.parametrize("reported", [None, -1, True, "4", 1.5])
+def test_missing_or_invalid_reasoning_usage_remains_null(
+    monkeypatch: pytest.MonkeyPatch,
+    reported: Any,
+) -> None:
+    envelope = _envelope('{"answer": 42}')
+    envelope["usage"]["completion_tokens_details"] = {"reasoning_tokens": reported}
+    request = httpx.Request("POST", "https://openrouter.test/chat/completions")
+    response = httpx.Response(
+        200,
+        content=json.dumps(envelope, allow_nan=True).encode(),
+        headers={"content-type": "application/json"},
+        request=request,
+    )
+    _install_fake_http(monkeypatch, [response])
+
+    result = _structured_chat(OpenRouterClient(api_key=API_KEY, max_attempts=1))
+
+    assert result.call.reasoning_tokens is None
+    assert result.call.output_tokens == 7
+    assert result.call.total_tokens == 18
+
+
+def test_invalid_provider_usage_numbers_are_omitted_from_typed_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    envelope = _envelope('{"answer": 42}')
+    envelope["usage"] = {
+        "prompt_tokens": -1,
+        "completion_tokens": True,
+        "total_tokens": float("nan"),
+        "cost": float("inf"),
+        "completion_tokens_details": {"reasoning_tokens": -2},
+    }
+    request = httpx.Request("POST", "https://openrouter.test/chat/completions")
+    response = httpx.Response(
+        200,
+        content=json.dumps(envelope, allow_nan=True).encode(),
+        headers={"content-type": "application/json"},
+        request=request,
+    )
+    _install_fake_http(monkeypatch, [response])
+
+    result = _structured_chat(OpenRouterClient(api_key=API_KEY, max_attempts=1))
+
+    assert result.call.input_tokens is None
+    assert result.call.output_tokens is None
+    assert result.call.reasoning_tokens is None
+    assert result.call.total_tokens is None
+    assert result.call.cost_usd is None
+
+
+def test_refusal_is_a_typed_paid_failure_without_retaining_refusal_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     envelope = _envelope("")
-    envelope["choices"][0]["message"]["refusal"] = f"policy refusal: {API_KEY}"
+    refusal = f"policy refusal with private payload: {API_KEY}"
+    envelope["choices"][0]["message"]["refusal"] = refusal
     _install_fake_http(monkeypatch, [_response(200, envelope=envelope)])
 
-    with pytest.raises(ValueError, match="model refused structured extraction") as exc_info:
+    with pytest.raises(ProviderResponseValidationError) as exc_info:
         _structured_chat(OpenRouterClient(api_key=API_KEY, max_attempts=1))
 
     error_text = _exception_chain_text(exc_info.value)
+    assert exc_info.value.code == "invalid_json"
+    assert exc_info.value.validation_keyword is (
+        ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_REFUSAL
+    )
+    assert exc_info.value.call.cost_usd == 0.00125
+    assert exc_info.value.call.total_tokens == 18
     assert API_KEY not in error_text
-    assert "[REDACTED]" in error_text
+    assert refusal not in error_text
+    assert refusal not in exc_info.value.call.model_dump_json()
 
 
 def test_http_error_body_is_redacted_through_exception_chain(
@@ -570,3 +945,50 @@ def test_transport_error_is_sanitized_before_exception_chaining(
     assert API_KEY not in error_text
     assert "[REDACTED]" in error_text
     assert not isinstance(exc_info.value.__cause__, httpx.HTTPError)
+
+
+def test_reasoning_none_turns_the_feature_off_instead_of_lowering_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DeepSeek V4 Flash billed reasoning tokens on every call at effort "minimal"."""
+
+    calls = _install_fake_http(
+        monkeypatch, [_response(200, envelope=_envelope(json.dumps({"answer": 1})))]
+    )
+    clock = iter((100.0, 100.5))
+    monkeypatch.setattr(openrouter_module.time, "monotonic", lambda: next(clock))
+
+    _structured_chat(
+        OpenRouterClient(
+            api_key=API_KEY,
+            base_url="https://openrouter.test/",
+            timeout_seconds=9.5,
+            max_attempts=2,
+        ),
+        reasoning_effort="none",
+    )
+
+    assert calls[0]["json"]["reasoning"] == {"enabled": False, "exclude": True}
+
+
+def test_reasoning_effort_none_is_recorded_as_asked_not_silently_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _install_fake_http(
+        monkeypatch, [_response(200, envelope=_envelope(json.dumps({"answer": 1})))]
+    )
+    clock = iter((100.0, 100.5))
+    monkeypatch.setattr(openrouter_module.time, "monotonic", lambda: next(clock))
+
+    result = _structured_chat(
+        OpenRouterClient(
+            api_key=API_KEY,
+            base_url="https://openrouter.test/",
+            timeout_seconds=9.5,
+            max_attempts=2,
+        ),
+        reasoning_effort="none",
+    )
+
+    assert result.call.reasoning_effort == "none"
+    assert calls[0]["json"]["reasoning"]["enabled"] is False

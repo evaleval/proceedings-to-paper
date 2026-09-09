@@ -7,6 +7,9 @@ import mimetypes
 import re
 import shutil
 import subprocess
+import threading
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -16,7 +19,44 @@ import httpx
 from pydantic import Field, HttpUrl, model_validator
 
 from proceedings_to_eee.domain.observation import StrictModel
-from proceedings_to_eee.io import sha256_file
+from proceedings_to_eee.io import atomic_write_bytes, sha256_file
+
+# Statuses worth another attempt: the origin is busy, throttling, or briefly broken.
+# Every other 4xx is a permanent answer about this URL and must not be retried.
+_RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+
+
+class HostRateLimiter:
+    """Pace outbound requests so a bulk freeze stays polite to one origin.
+
+    Threads reserve their slot under the lock and sleep outside it, so the observed
+    request rate is the configured one no matter how many workers are running.
+    """
+
+    def __init__(self, requests_per_second: float) -> None:
+        self._interval = 1.0 / requests_per_second if requests_per_second > 0 else 0.0
+        self._lock = threading.Lock()
+        self._next_allowed = 0.0
+
+    def acquire(self) -> None:
+        if self._interval <= 0:
+            return
+        with self._lock:
+            start = max(time.monotonic(), self._next_allowed)
+            self._next_allowed = start + self._interval
+        delay = start - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+
+
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    raw = response.headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw.strip()))
+    except ValueError:
+        return None
 
 
 class SourceRole(StrEnum):
@@ -93,6 +133,8 @@ class SourceManifest(StrictModel):
             raise ValueError("source_id values must be unique")
         if any(source.paper_id != self.paper_id for source in self.sources):
             raise ValueError("all sources must share manifest paper_id")
+        if sum(source.role is SourceRole.PAPER for source in self.sources) != 1:
+            raise ValueError("source manifest requires exactly one primary paper source")
         return self
 
 
@@ -145,22 +187,57 @@ def download_and_freeze_source(
     cache_root: Path,
     timeout_seconds: float = 90.0,
     license_disposition: LicenseDisposition = LicenseDisposition.DERIVED_METADATA_ONLY,
+    max_attempts: int = 4,
+    backoff_cap_seconds: float = 30.0,
+    before_request: Callable[[], None] | None = None,
 ) -> FrozenSource:
-    """Download a public source, then pin final URL, bytes, time, and digest."""
+    """Download a public source, then pin final URL, bytes, time, and digest.
+
+    Throttling, timeouts and brief origin failures are retried with exponential
+    back-off, honouring `Retry-After` when the origin sends it. Any other status is a
+    permanent answer and is raised immediately.
+    """
 
     parsed = urlparse(url)
     if parsed.scheme not in {"https", "http"} or not parsed.netloc:
         raise ValueError("source URL must be absolute HTTP(S)")
-    with httpx.Client(follow_redirects=True, timeout=timeout_seconds) as client:
-        response = client.get(url, headers={"User-Agent": "Proceedings-to-EEE/0.2"})
-        response.raise_for_status()
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least 1")
+
+    response: httpx.Response | None = None
+    for attempt in range(1, max_attempts + 1):
+        if before_request is not None:
+            before_request()
+        try:
+            with httpx.Client(follow_redirects=True, timeout=timeout_seconds) as client:
+                candidate = client.get(url, headers={"User-Agent": "Proceedings-to-EEE/0.2"})
+            if candidate.status_code in _RETRYABLE_STATUS:
+                if attempt == max_attempts:
+                    candidate.raise_for_status()
+                delay = _retry_after_seconds(candidate)
+                if delay is None:
+                    delay = min(backoff_cap_seconds, 2.0 ** (attempt - 1))
+                time.sleep(min(delay, backoff_cap_seconds))
+                continue
+            candidate.raise_for_status()
+            response = candidate
+            break
+        except httpx.TransportError:
+            if attempt == max_attempts:
+                raise
+            time.sleep(min(backoff_cap_seconds, 2.0 ** (attempt - 1)))
+    if response is None:  # pragma: no cover - guarded by the raises above
+        raise RuntimeError(f"source download produced no response for {paper_id}")
+
     content_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
     digest = hashlib.sha256(response.content).hexdigest()
     suffix = ".pdf" if content_type == "application/pdf" or url.endswith(".pdf") else ".bin"
     destination = cache_root / digest[:2] / f"{digest}{suffix}"
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists():
-        destination.write_bytes(response.content)
+        # Distinct papers can share identical bytes, and a bulk freeze runs them in
+        # parallel, so the cache write has to be atomic rather than a plain write.
+        atomic_write_bytes(destination, response.content)
     if sha256_file(destination) != digest:
         raise OSError("cached source hash mismatch")
     return FrozenSource(

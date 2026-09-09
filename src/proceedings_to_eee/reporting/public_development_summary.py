@@ -12,16 +12,17 @@ from pathlib import Path
 from typing import Any
 
 from proceedings_to_eee.domain.attribution import AttributionState
+from proceedings_to_eee.domain.lineage import CandidateLineageArtifact
 from proceedings_to_eee.domain.observation import CandidateObservation
 from proceedings_to_eee.domain.status import ExportStatus
 from proceedings_to_eee.extraction.row_enumeration import (
     RowDisposition,
-    RowDispositionRecord,
     RowEnumerationConfig,
     RowEnumerationPlan,
-    UnbatchableReason,
-    make_row_batch,
+    RowTerminalLedger,
+    RowTerminalState,
 )
+from proceedings_to_eee.extraction.row_validation import validate_terminal_ledger_against
 from proceedings_to_eee.io import (
     canonical_json_bytes,
     read_json,
@@ -29,17 +30,34 @@ from proceedings_to_eee.io import (
     sha256_file,
     write_json,
 )
+from proceedings_to_eee.providers.openrouter import ProviderCall
 from proceedings_to_eee.reporting.extraction_review_cards import (
     ExtractionReviewCardError,
     _assert_public_payload,
 )
+from proceedings_to_eee.reporting.validated_corpus import (
+    CompletedCorpusValidationError,
+    ValidatedCorpusReceipt,
+    aggregate_provider_telemetry,
+    aggregate_stage_receipts,
+    empty_source_provenance_counts,
+    validate_completed_corpus_run,
+)
 from proceedings_to_eee.resources import DEFAULT_EEE_SCHEMA_PATH
+from proceedings_to_eee.reviewed_export.models import DerivedRunManifest
+from proceedings_to_eee.reviewed_export.workflow import (
+    DERIVED_MANIFEST_NAME,
+    ReviewedExportError,
+    verify_contextual_derived_run,
+)
 from proceedings_to_eee.validation.eee_schema import load_schema, validate_eee_record
 
-PUBLIC_DEVELOPMENT_SUMMARY_SCHEMA_VERSION = "public-development-summary/0.1"
+PUBLIC_DEVELOPMENT_SUMMARY_SCHEMA_VERSION = "public-development-summary/0.3"
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT = re.compile(r"^[0-9a-f]{40,64}$")
+_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]*(?:/[A-Za-z0-9][A-Za-z0-9._:+-]*){1,3}$")
+_REASONING_EFFORTS = {None, "none", "minimal", "low", "medium", "high", "xhigh"}
 _REVIEW_REASONS = {
     "candidate_review_required",
     "eee_schema_validation_failure",
@@ -95,6 +113,13 @@ def _optional_rate(value: object, context: str) -> float | None:
     return number
 
 
+def _optional_temperature(value: object, context: str) -> float | None:
+    number = _optional_nonnegative_number(value, context)
+    if number is not None and number > 2:
+        raise PublicDevelopmentSummaryError(f"{context} must be at most two")
+    return number
+
+
 def _sha256(value: object, context: str) -> str:
     if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
         raise PublicDevelopmentSummaryError(f"{context} must be a lowercase SHA-256")
@@ -144,15 +169,23 @@ def _stage_binding(stage: Mapping[str, Any], context: str) -> dict[str, Any]:
     model = stage.get("model")
     if not isinstance(provider, str) or not provider:
         raise PublicDevelopmentSummaryError(f"{context}.provider must be a non-empty string")
-    if not isinstance(model, str) or not model:
-        raise PublicDevelopmentSummaryError(f"{context}.model must be a non-empty string")
+    if not isinstance(model, str) or len(model) > 255 or _MODEL_ID.fullmatch(model) is None:
+        raise PublicDevelopmentSummaryError(f"{context}.model is not a public-safe model ID")
+    reasoning_effort = stage.get("reasoning_effort")
+    if reasoning_effort not in _REASONING_EFFORTS:
+        raise PublicDevelopmentSummaryError(f"{context}.reasoning_effort is unsupported")
+    seed = stage.get("seed")
+    if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int) or seed < 0):
+        raise PublicDevelopmentSummaryError(
+            f"{context}.seed must be null or a non-negative integer"
+        )
     return {
         "provider": _safe_identifier(provider, f"{context}.provider"),
         "model": model,
-        "temperature": stage.get("temperature"),
-        "reasoning_effort": stage.get("reasoning_effort"),
+        "temperature": _optional_temperature(stage.get("temperature"), f"{context}.temperature"),
+        "reasoning_effort": reasoning_effort,
         "max_tokens": _nonnegative_int(stage.get("max_tokens"), f"{context}.max_tokens"),
-        "seed": stage.get("seed"),
+        "seed": seed,
         "prompt_sha256": prompt_sha256,
         "request_contract_sha256": sha256_bytes(canonical_json_bytes(request_contract)),
     }
@@ -253,6 +286,9 @@ def _recorded_call_telemetry(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any
     output_tokens = [
         call.get("output_tokens") for call in calls if call.get("output_tokens") is not None
     ]
+    reasoning_tokens = [
+        call.get("reasoning_tokens") for call in calls if call.get("reasoning_tokens") is not None
+    ]
     total_tokens = [
         call.get("total_tokens") for call in calls if call.get("total_tokens") is not None
     ]
@@ -290,6 +326,11 @@ def _recorded_call_telemetry(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any
         ),
         "output_tokens_reported_invocations": len(output_tokens),
         "output_tokens_missing_invocations": len(calls) - len(output_tokens),
+        "reasoning_tokens_lower_bound": sum(
+            _nonnegative_int(value, "call.reasoning_tokens") for value in reasoning_tokens
+        ),
+        "reasoning_tokens_reported_invocations": len(reasoning_tokens),
+        "reasoning_tokens_missing_invocations": len(calls) - len(reasoning_tokens),
         "total_tokens_lower_bound": sum(
             _nonnegative_int(value, "call.total_tokens") for value in total_tokens
         ),
@@ -303,8 +344,8 @@ def _recorded_call_telemetry(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any
     }
 
 
-def build_public_development_summary(run_root: Path) -> dict[str, Any]:
-    """Build a path-free aggregate from one completed development run. Offline."""
+def _build_legacy_public_development_summary(run_root: Path) -> dict[str, Any]:
+    """Build the explicit historical projection for a pipeline-run/0.2 corpus."""
 
     run_root = run_root.resolve()
     corpus_path = run_root / "corpus-run.json"
@@ -356,6 +397,7 @@ def build_public_development_summary(run_root: Path) -> dict[str, Any]:
         raise PublicDevelopmentSummaryError("corpus paper status counts do not match its runs")
     paper_ids: list[str] = []
     candidate_sets: list[list[CandidateObservation]] = []
+    lineage_counts: list[Mapping[str, Any]] = []
     observation_ids: set[str] = set()
     for run in runs:
         paper_id = _safe_identifier(run.get("paper_id"), "paper id")
@@ -366,7 +408,8 @@ def build_public_development_summary(run_root: Path) -> dict[str, Any]:
         if not adjacent_path.is_file() or adjacent_path.is_symlink():
             raise PublicDevelopmentSummaryError("each paper requires a regular adjacent run.json")
         adjacent = _mapping(read_json(adjacent_path), f"{paper_id}/run.json")
-        if adjacent.get("schema_version") != "pipeline-run/0.2" or adjacent != run:
+        pipeline_schema = adjacent.get("schema_version")
+        if pipeline_schema not in {"pipeline-run/0.2", "pipeline-run/0.3"} or adjacent != run:
             raise PublicDevelopmentSummaryError(
                 "adjacent paper run does not match the corpus-run manifest"
             )
@@ -414,6 +457,41 @@ def build_public_development_summary(run_root: Path) -> dict[str, Any]:
             raise PublicDevelopmentSummaryError(
                 "pre-deduplication count does not equal candidates plus removals"
             )
+        if pipeline_schema == "pipeline-run/0.3":
+            binding = _mapping(run.get("candidate_lineage"), "candidate lineage binding")
+            lineage_path = run_root / paper_id / "candidate-lineage.json"
+            if (
+                binding.get("path") != "candidate-lineage.json"
+                or not lineage_path.is_file()
+                or lineage_path.is_symlink()
+                or _sha256(
+                    binding.get("artifact_sha256"),
+                    "candidate lineage artifact SHA-256",
+                )
+                != sha256_file(lineage_path)
+            ):
+                raise PublicDevelopmentSummaryError(
+                    "candidate lineage does not match the paper run"
+                )
+            try:
+                lineage = CandidateLineageArtifact.model_validate(read_json(lineage_path))
+            except ValueError as error:
+                raise PublicDevelopmentSummaryError("candidate lineage is invalid") from error
+            reported_lineage_counts = _mapping(binding.get("counts"), "candidate lineage counts")
+            if (
+                lineage.paper_id != paper_id
+                or lineage.observations_sha256
+                != sha256_file(run_root / paper_id / "observations.jsonl")
+                or reported_lineage_counts != lineage.counts.model_dump(mode="json")
+                or lineage.counts.final_candidates != expected_candidates
+                or lineage.counts.candidate_occurrences != before_dedup
+                or {item.final_observation_id for item in lineage.candidates}
+                != {str(candidate.observation_id) for candidate in candidates}
+            ):
+                raise PublicDevelopmentSummaryError(
+                    "candidate lineage does not exactly account the observation ledger"
+                )
+            lineage_counts.append(reported_lineage_counts)
         candidate_sets.append(candidates)
 
     if sha256_bytes(canonical_json_bytes(paper_ids)) != paper_ids_sha256:
@@ -563,151 +641,88 @@ def build_public_development_summary(run_root: Path) -> dict[str, Any]:
             )
         if full_plan.telemetry.model_dump(mode="json") != row_plan_summary:
             raise PublicDevelopmentSummaryError("row plan telemetry does not match private plan")
-        planned_ids = [row.row_id for row in full_plan.rows]
-        if len(planned_ids) != len(set(planned_ids)):
-            raise PublicDevelopmentSummaryError("private row plan contains duplicate row ids")
-        planned_id_set = set(planned_ids)
-        plan_unbatchable_ids = [item.row_id for item in full_plan.unbatchable_rows]
-        if len(plan_unbatchable_ids) != len(set(plan_unbatchable_ids)):
-            raise PublicDevelopmentSummaryError(
-                "private row plan contains duplicate unbatchable row ids"
-            )
-        plan_unbatchable_set = set(plan_unbatchable_ids)
-        batch_ids = [row.row_id for batch in full_plan.batches for row in batch.rows]
-        if len(batch_ids) != len(set(batch_ids)):
-            raise PublicDevelopmentSummaryError("private row plan batches repeat row ids")
-        if (
-            plan_unbatchable_set - planned_id_set
-            or set(batch_ids) != planned_id_set - plan_unbatchable_set
-            or full_plan.telemetry.rows_planned != len(planned_ids)
-            or full_plan.telemetry.unbatchable_rows != len(plan_unbatchable_ids)
-            or full_plan.telemetry.base_batches != len(full_plan.batches)
-            or full_plan.telemetry.expected_calls != len(full_plan.batches)
-            or full_plan.telemetry.maximum_calls
-            != len(full_plan.batches) * (1 + 2 * row_limits.max_recovery_depth)
-        ):
-            raise PublicDevelopmentSummaryError("private row plan does not partition planned rows")
-        planned_by_id = {row.row_id: row for row in full_plan.rows}
-        for batch in full_plan.batches:
-            if (
-                make_row_batch(batch.rows) != batch
-                or any(planned_by_id.get(row.row_id) != row for row in batch.rows)
-                or len(batch.rows) > row_limits.max_rows_per_batch
-                or batch.character_count > row_limits.max_characters_per_batch
-                or batch.value_token_count > row_limits.max_value_tokens_per_batch
-            ):
-                raise PublicDevelopmentSummaryError(
-                    "private row batch does not match its configured hard limits"
-                )
-        for item in full_plan.unbatchable_rows:
-            row = planned_by_id[item.row_id]
-            singleton = make_row_batch([row])
-            reasons: list[UnbatchableReason] = []
-            if singleton.character_count > row_limits.max_characters_per_batch:
-                reasons.append(UnbatchableReason.CHARACTER_LIMIT)
-            if singleton.value_token_count > row_limits.max_value_tokens_per_batch:
-                reasons.append(UnbatchableReason.VALUE_TOKEN_LIMIT)
-            if (
-                item.input_sha256 != row.input_sha256
-                or item.source_id != row.source_id
-                or item.page != row.page
-                or item.region_id != row.region_id
-                or item.character_count != singleton.character_count
-                or item.value_token_count != singleton.value_token_count
-                or item.max_characters_per_batch != row_limits.max_characters_per_batch
-                or item.max_value_tokens_per_batch != row_limits.max_value_tokens_per_batch
-                or item.reasons != reasons
-            ):
-                raise PublicDevelopmentSummaryError(
-                    "typed unbatchable row does not match its planned row and limits"
-                )
         outcome_path = run_root / paper_id / "private" / "row-enumeration.json"
         if not outcome_path.is_file() or outcome_path.is_symlink():
             raise PublicDevelopmentSummaryError("each paper requires a regular private row outcome")
         private_outcome = _mapping(read_json(outcome_path), "private row outcome")
+        terminal_binding = _mapping(row_stage.get("terminal_states"), "row terminal binding")
+        terminal_path = run_root / paper_id / "private" / "row-terminal-states.json"
+        if not terminal_path.is_file() or terminal_path.is_symlink():
+            raise PublicDevelopmentSummaryError(
+                "each paper requires a regular private row terminal ledger"
+            )
+        terminal_sha256 = _sha256(
+            terminal_binding.get("artifact_sha256"),
+            "row terminal ledger SHA-256",
+        )
         if (
-            private_outcome.get("schema_version") != "row-enumeration-outcome/0.1"
+            private_outcome.get("schema_version") != "row-enumeration-outcome/0.3"
             or private_outcome.get("plan_sha256") != plan_sha256
+            or private_outcome.get("terminal_states_sha256") != terminal_sha256
             or private_outcome.get("telemetry") != row_outcome
             or private_outcome.get("calls") != row_calls
             or private_outcome.get("attempts") != row_attempts
+            or sha256_file(terminal_path) != terminal_sha256
         ):
             raise PublicDevelopmentSummaryError("private row outcome does not match the paper run")
-        raw_records = _mapping(private_outcome.get("records"), "private row records")
-        records: dict[str, RowDispositionRecord] = {}
         try:
-            for row_id, raw_record in raw_records.items():
-                if not isinstance(row_id, str) or not row_id:
-                    raise PublicDevelopmentSummaryError(
-                        "private row record keys must be non-empty strings"
-                    )
-                record = RowDispositionRecord.model_validate(raw_record)
-                if record.row_id != row_id:
-                    raise PublicDevelopmentSummaryError(
-                        "private row record key does not match its row id"
-                    )
-                if any(candidate.paper_id != paper_id for candidate in record.candidates):
-                    raise PublicDevelopmentSummaryError(
-                        "private row record candidate belongs to another paper"
-                    )
-                records[row_id] = record
+            terminal_ledger = RowTerminalLedger.model_validate(read_json(terminal_path))
+            typed_calls = [ProviderCall.model_validate(item) for item in row_calls]
+            validate_terminal_ledger_against(
+                full_plan,
+                terminal_ledger,
+                paper_id=paper_id,
+                model=str(row_stage.get("model")),
+                retained_calls=typed_calls,
+            )
         except ValueError as error:
-            raise PublicDevelopmentSummaryError("private row records are invalid") from error
-        unresolved_ids = _unique_strings(
-            private_outcome.get("unresolved_row_ids"), "unresolved row ids"
-        )
-        unbatchable_ids = _unique_strings(
-            private_outcome.get("unbatchable_row_ids"), "unbatchable row ids"
-        )
-        unknown_ids = _unique_strings(private_outcome.get("unknown_row_ids"), "unknown row ids")
-        invalid_reasons = _mapping(
-            private_outcome.get("invalid_row_reasons"), "invalid row reasons"
-        )
-        if any(
-            not isinstance(row_id, str) or not isinstance(reason, str) or not reason
-            for row_id, reason in invalid_reasons.items()
-        ):
-            raise PublicDevelopmentSummaryError("invalid row reasons are malformed")
-        record_ids = set(records)
-        unresolved_set = set(unresolved_ids)
-        unbatchable_set = set(unbatchable_ids)
-        if (
-            record_ids & unresolved_set
-            or record_ids & unbatchable_set
-            or unresolved_set & unbatchable_set
-            or record_ids | unresolved_set | unbatchable_set != planned_id_set
-            or unbatchable_set != plan_unbatchable_set
-            or set(unknown_ids) & planned_id_set
-            or set(invalid_reasons) - planned_id_set
-        ):
+            raise PublicDevelopmentSummaryError("private row terminal ledger is invalid") from error
+        terminal_counts = terminal_ledger.counts
+        if terminal_binding.get("counts") != terminal_counts.model_dump(mode="json"):
             raise PublicDevelopmentSummaryError(
-                "private row outcome does not exactly partition the planned row ids"
+                "row terminal counts do not match the hash-bound private ledger"
             )
-        actual_dispositions = Counter(record.disposition.value for record in records.values())
-        actual_dispositions.update(
-            {disposition: 0 for disposition in _ROW_DISPOSITIONS - actual_dispositions.keys()}
-        )
+        unresolved_ids = [
+            row_id
+            for row_id, terminal in terminal_ledger.terminal_by_row.items()
+            if terminal.state is RowTerminalState.UNRESOLVED
+        ]
+        unbatchable_ids = [
+            row_id
+            for row_id, terminal in terminal_ledger.terminal_by_row.items()
+            if terminal.state is RowTerminalState.UNSUPPORTED
+        ]
+        actual_dispositions = {
+            "result": terminal_counts.result,
+            "not_result": terminal_counts.not_result,
+            "uncertain": terminal_counts.uncertain,
+        }
         reported_dispositions = _mapping(row_outcome.get("dispositions"), "row dispositions")
-        if set(reported_dispositions) != _ROW_DISPOSITIONS or {
-            name: _nonnegative_int(value, f"row disposition {name}")
-            for name, value in reported_dispositions.items()
-        } != dict(actual_dispositions):
-            raise PublicDevelopmentSummaryError(
-                "row disposition telemetry does not match private row records"
-            )
         if (
-            _nonnegative_int(row_outcome.get("rows_resolved"), "rows resolved") != len(record_ids)
-            or _nonnegative_int(row_outcome.get("rows_unresolved"), "rows unresolved")
-            != len(unresolved_ids)
-            or _nonnegative_int(row_outcome.get("rows_unbatchable"), "rows unbatchable")
-            != len(unbatchable_ids)
-            or _nonnegative_int(row_execution.get("unknown_row_ids_seen"), "unknown row ids seen")
-            != len(unknown_ids)
-            or _nonnegative_int(row_execution.get("invalid_rows_seen"), "invalid rows seen")
-            != len(invalid_reasons)
+            set(reported_dispositions) != _ROW_DISPOSITIONS
+            or {
+                name: _nonnegative_int(value, f"row disposition {name}")
+                for name, value in reported_dispositions.items()
+            }
+            != actual_dispositions
         ):
             raise PublicDevelopmentSummaryError(
-                "row telemetry does not match the private row-id ledger"
+                "row disposition telemetry does not match private terminal records"
+            )
+        if (
+            _nonnegative_int(row_outcome.get("rows_resolved"), "rows resolved")
+            != terminal_counts.result + terminal_counts.not_result + terminal_counts.uncertain
+            or _nonnegative_int(row_outcome.get("rows_unresolved"), "rows unresolved")
+            != terminal_counts.unresolved
+            or _nonnegative_int(row_outcome.get("rows_unbatchable"), "rows unbatchable")
+            != terminal_counts.unsupported
+            or _nonnegative_int(row_execution.get("unknown_row_ids_seen"), "unknown row ids seen")
+            != len(terminal_ledger.protocol_events)
+            or _nonnegative_int(row_execution.get("invalid_rows_seen"), "invalid rows seen")
+            != len(terminal_ledger.invalid_row_reasons)
+        ):
+            raise PublicDevelopmentSummaryError(
+                "row telemetry does not match the private row terminal ledger"
             )
         row_incomplete = bool(unresolved_ids or unbatchable_ids)
         expected_run_status = "partial_failure" if row_incomplete else "success"
@@ -900,6 +915,8 @@ def build_public_development_summary(run_root: Path) -> dict[str, Any]:
     operations = _mapping(corpus.get("operations"), "corpus operations")
     summary = {
         "schema_version": PUBLIC_DEVELOPMENT_SUMMARY_SCHEMA_VERSION,
+        "projection_mode": "historical_pipeline_0.2",
+        "current_sealed_receipt": False,
         "statement": (
             "Development-only aggregate for an evidence-first research prototype; human review "
             "is required and this is not validation for unattended extraction."
@@ -1025,6 +1042,37 @@ def build_public_development_summary(run_root: Path) -> dict[str, Any]:
             "private_annotations_included": False,
         },
     }
+    if lineage_counts:
+        summary["outputs"]["candidate_lineage"] = {
+            "runs_bound": len(lineage_counts),
+            "all_current_schema_runs_bound": len(lineage_counts)
+            == sum(run.get("schema_version") == "pipeline-run/0.3" for run in runs),
+            "proposals": sum(
+                _nonnegative_int(item.get("proposals"), "lineage proposals")
+                for item in lineage_counts
+            ),
+            "candidate_occurrences": sum(
+                _nonnegative_int(
+                    item.get("candidate_occurrences"),
+                    "lineage candidate occurrences",
+                )
+                for item in lineage_counts
+            ),
+            "final_candidates": sum(
+                _nonnegative_int(
+                    item.get("final_candidates"),
+                    "lineage final candidates",
+                )
+                for item in lineage_counts
+            ),
+            "merged_candidates": sum(
+                _nonnegative_int(
+                    item.get("merged_candidates"),
+                    "lineage merged candidates",
+                )
+                for item in lineage_counts
+            ),
+        }
     try:
         _assert_public_payload(summary, "public development summary")
     except ExtractionReviewCardError as error:
@@ -1034,18 +1082,375 @@ def build_public_development_summary(run_root: Path) -> dict[str, Any]:
     return summary
 
 
-def write_public_development_summary(run_root: Path, output_path: Path) -> str:
+def _counter_sum(receipt: ValidatedCorpusReceipt, field: str) -> dict[str, int]:
+    counter: Counter[str] = Counter()
+    for paper in receipt.papers:
+        counter.update(getattr(paper, field))
+    return dict(sorted(counter.items()))
+
+
+def _row_summary(receipt: ValidatedCorpusReceipt) -> dict[str, Any]:
+    dispositions: Counter[str] = Counter()
+    names = (
+        "tables_considered",
+        "dense_tables",
+        "rows_planned",
+        "rows_resolved",
+        "rows_unresolved",
+        "rows_unbatchable",
+        "unknown_row_ids_seen",
+        "invalid_rows_seen",
+    )
+    values = {name: sum(int(paper.row_metrics[name]) for paper in receipt.papers) for name in names}
+    for paper in receipt.papers:
+        dispositions.update(paper.row_metrics["dispositions"])
+    return {
+        **values,
+        "dispositions": dict(sorted(dispositions.items())),
+        "all_rows_accounted_for": True,
+        "all_planned_rows_partitioned": True,
+        "all_batchable_rows_resolved": values["rows_unresolved"] == 0,
+        "complete_extraction": (values["rows_unresolved"] == 0 and values["rows_unbatchable"] == 0),
+        "no_unknown_or_invalid_rows_seen": (
+            values["unknown_row_ids_seen"] == 0 and values["invalid_rows_seen"] == 0
+        ),
+    }
+
+
+def _reviewed_derived_projection(
+    receipt: ValidatedCorpusReceipt,
+    source_run_root: Path,
+    review_root: Path,
+    reviewed_derived_root: Path,
+) -> dict[str, Any]:
+    try:
+        contextual = verify_contextual_derived_run(
+            reviewed_derived_root.resolve(),
+            run_root=source_run_root.resolve(),
+            review_root=review_root.resolve(),
+            schema_sha256=str(receipt.eee_schema["sha256"]),
+        )
+        verification = contextual.verification
+        manifest = DerivedRunManifest.model_validate(
+            read_json(reviewed_derived_root.resolve() / DERIVED_MANIFEST_NAME)
+        )
+    except (OSError, ValueError, ReviewedExportError) as error:
+        raise PublicDevelopmentSummaryError(
+            "reviewed derived result failed contextual verification"
+        ) from error
+    if (
+        manifest.source_run_name != receipt.seal.source_run_name
+        or manifest.source_run_seal_sha256 != receipt.seal.seal_sha256
+        or manifest.source_run_tree_sha256 != receipt.seal.tree_sha256
+        or manifest.eee_schema_version != receipt.eee_schema["version"]
+        or manifest.eee_schema_sha256 != receipt.eee_schema["sha256"]
+    ):
+        raise PublicDevelopmentSummaryError(
+            "reviewed derived result belongs to another sealed source run"
+        )
+    source_tuple_sidecars = {paper.tuple_sidecar_sha256 for paper in receipt.papers}
+    source_verifier_sidecars = {
+        paper.verifier_sidecar_sha256
+        for paper in receipt.papers
+        if paper.verifier_sidecar_sha256 is not None
+    }
+    if not set(manifest.tuple_sidecar_sha256s).issubset(source_tuple_sidecars) or not set(
+        manifest.verifier_sidecar_sha256s
+    ).issubset(source_verifier_sidecars):
+        raise PublicDevelopmentSummaryError(
+            "reviewed derived result cites a gate outside the sealed source run"
+        )
+    modes = [item.value for item in manifest.export_provenance_modes]
+    mode_counts = empty_source_provenance_counts()
+    mode_counts.update(contextual.provenance_mode_counts)
+    return {
+        "status": "contextually_verified",
+        "locked_review_context_verified": True,
+        "independence_status": "not_measured",
+        "exported_observation_authority_mode_counts": dict(
+            sorted(contextual.authority_mode_counts.items())
+        ),
+        "source_run_binding": {
+            "seal_sha256": receipt.seal.seal_sha256,
+            "tree_sha256": receipt.seal.tree_sha256,
+        },
+        "derived_run_sha256": verification.derived_run_sha256,
+        "eee_records": manifest.counts["eee_records"],
+        "eee_observations": manifest.counts["eee_observations"],
+        "outcomes_exported": manifest.counts["outcomes_exported"],
+        "outcomes_withheld": manifest.counts["outcomes_withheld"],
+        "outcomes_failed": manifest.counts["outcomes_failed"],
+        "provenance_modes_present": modes,
+        "provenance_mode_counts": mode_counts,
+        "provenance_mode_count_status": "measured",
+        "source_and_reviewed_counts_combined": False,
+    }
+
+
+def _build_current_public_development_summary(
+    receipt: ValidatedCorpusReceipt,
+    *,
+    source_run_root: Path,
+    review_root: Path | None,
+    reviewed_derived_root: Path | None,
+) -> dict[str, Any]:
+    stages = aggregate_stage_receipts(receipt)
+    stage_statuses = {stage: item["status"] for stage, item in stages.items()}
+    five_stage_status = (
+        "validated"
+        if set(stage_statuses.values()) == {"validated"}
+        else "partial_failure"
+        if "partial_failure" in stage_statuses.values()
+        else "not_run"
+    )
+    counts = dict(receipt.totals)
+    proposals = sum(paper.lineage_counts["proposals"] for paper in receipt.papers)
+    occurrences = sum(paper.lineage_counts["candidate_occurrences"] for paper in receipt.papers)
+    final_candidates = sum(paper.lineage_counts["final_candidates"] for paper in receipt.papers)
+    merged_candidates = sum(paper.lineage_counts["merged_candidates"] for paper in receipt.papers)
+    review_reasons = Counter(reason for paper in receipt.papers for reason in paper.review_reasons)
+    papers_succeeded = sum(paper.status == "success" for paper in receipt.papers)
+    papers_failed = len(receipt.papers) - papers_succeeded
+    source_modes = {
+        "status": "measured",
+        "eee_records": 0,
+        "eee_observations": 0,
+        "provenance_mode_counts": empty_source_provenance_counts(),
+    }
+    reviewed = (
+        _reviewed_derived_projection(
+            receipt,
+            source_run_root,
+            review_root,
+            reviewed_derived_root,
+        )
+        if reviewed_derived_root is not None and review_root is not None
+        else {
+            "status": "not_supplied",
+            "locked_review_context_verified": False,
+            "independence_status": "not_measured",
+            "exported_observation_authority_mode_counts": None,
+            "eee_records": None,
+            "eee_observations": None,
+            "provenance_mode_counts": None,
+            "source_and_reviewed_counts_combined": False,
+        }
+    )
+    summary = {
+        "schema_version": PUBLIC_DEVELOPMENT_SUMMARY_SCHEMA_VERSION,
+        "projection_mode": "sealed_current_five_stage_receipt",
+        "current_sealed_receipt": True,
+        "statement": (
+            "Development-only aggregate for an evidence-first research prototype; source-run "
+            "and reviewed-derived results are verified and reported separately."
+        ),
+        "run_binding": {
+            "run_id": _safe_identifier(receipt.seal.source_run_name, "source run name"),
+            "corpus_id": _safe_identifier(receipt.corpus_id, "corpus id"),
+            "recorded_corpus_spec_sha256": receipt.corpus_spec_sha256,
+            "corpus_spec_binding_status": "recorded_hash_not_rederived",
+            "paper_ids_sha256": receipt.paper_ids_sha256,
+            "corpus_run_sha256": receipt.corpus_run_sha256,
+            "generated_at": _generated_at(receipt.generated_at),
+            "run_seal": {
+                "schema_version": receipt.seal.schema_version,
+                "seal_sha256": receipt.seal.seal_sha256,
+                "tree_sha256": receipt.seal.tree_sha256,
+                "file_count": receipt.seal.file_count,
+            },
+            "code": dict(receipt.code),
+            "extractor": dict(receipt.extractor_binding),
+            "row_extractor": dict(receipt.row_binding),
+            "candidate_validation": dict(receipt.candidate_validation),
+            "eee_schema": dict(receipt.eee_schema),
+            "stage_chain": {
+                "mode": (
+                    "current_five_stage_contract"
+                    if five_stage_status == "validated"
+                    else "current_tuple_review_contract"
+                ),
+                "five_stage_gate_status": five_stage_status,
+                "missing_gate_treated_as_passed": False,
+                "checkpoint_validation": stages,
+            },
+        },
+        "scope": {
+            "split": "development",
+            "papers": len(receipt.papers),
+            "holdout_included": False,
+            "private_human_annotations_included": False,
+            "independent_human_validation": False,
+        },
+        "technical_health": {
+            "status": receipt.corpus_status,
+            "run_completeness": (
+                "complete" if five_stage_status == "validated" else "typed_stage_incomplete"
+            ),
+            "release_ready": False,
+            "papers_succeeded": papers_succeeded,
+            "papers_failed": papers_failed,
+            "papers_needing_review": sum(paper.needs_review for paper in receipt.papers),
+            "wall_clock_seconds": receipt.operations.get("wall_clock_seconds"),
+            "review_reason_counts": dict(sorted(review_reasons.items())),
+        },
+        "row_enumeration": _row_summary(receipt),
+        "outputs": {
+            **counts,
+            "count_projection_basis": "checkpoint_replayed_allowlist",
+            "candidate_proposal_removal_rate": (
+                counts["duplicates_removed"] / counts["candidates_before_deduplication"]
+                if counts["candidates_before_deduplication"]
+                else None
+            ),
+            "export_status_counts": _counter_sum(receipt, "export_status_counts"),
+            "text_support_status_counts": _counter_sum(receipt, "text_support_counts"),
+            "referential_status_counts": _counter_sum(receipt, "referential_status_counts"),
+            "attribution_state_counts": _counter_sum(receipt, "attribution_state_counts"),
+            "candidate_lineage": {
+                "runs_bound": len(receipt.papers),
+                "all_current_schema_runs_bound": True,
+                "proposals": proposals,
+                "candidate_occurrences": occurrences,
+                "final_candidates": final_candidates,
+                "merged_candidates": merged_candidates,
+            },
+        },
+        "canonical_eee": {
+            "status": "empty",
+            "records": 0,
+            "schema_issues": 0,
+            "positive_paper_produced_origin_required": True,
+            "automatic_positive_origin_enabled": False,
+            "safe_empty_output_is_valid": True,
+        },
+        "numeric_export_provenance": {
+            "status": "not_applicable_empty_source_export",
+            "exported_observations": 0,
+            "complete_observations": 0,
+            "all_complete": None,
+            "evidence_quotations_included": False,
+        },
+        "provider_usage_recorded": aggregate_provider_telemetry(receipt),
+        "reference_evaluation": {
+            "status": "not_projected_from_current_receipt",
+            "precision": {"status": "not_measured"},
+            "generalization_evidence": False,
+        },
+        "export_provenance_modes": {
+            "source_run": source_modes,
+            "reviewed_derived": reviewed,
+            "counts_combined": False,
+        },
+        "annotation_status": {
+            "source_run_human_annotations_included": False,
+            "reviewed_derived_supplied": reviewed["status"] == "contextually_verified",
+            "reviewed_derived_authority_mode_counts": reviewed[
+                "exported_observation_authority_mode_counts"
+            ],
+            "inter_annotator_agreement_available": False,
+        },
+        "limitations": [
+            "This is open-development evidence, not holdout or generalization evidence.",
+            "Automatic positive producer-origin authority remains disabled.",
+            "Source-run and human-reviewed derived outcomes are never combined.",
+            "Private excerpts, labels, proposals, calls, and identifiers are not projected.",
+        ],
+        "privacy": {
+            "evidence_quotations_included": False,
+            "paper_level_rows_or_labels_included": False,
+            "provider_traces_included": False,
+            "request_identifiers_included": False,
+            "credentials_included": False,
+            "local_paths_included": False,
+            "private_annotations_included": False,
+        },
+    }
+    try:
+        _assert_public_payload(summary, "public development summary")
+    except ExtractionReviewCardError as error:
+        raise PublicDevelopmentSummaryError(
+            "projected summary failed the public-payload audit"
+        ) from error
+    return summary
+
+
+def build_public_development_summary(
+    run_root: Path,
+    *,
+    reviewed_derived_root: Path | None = None,
+    review_root: Path | None = None,
+) -> dict[str, Any]:
+    """Build a quote-free aggregate from a historical or sealed current run."""
+
+    root = run_root.resolve()
+    corpus = _mapping(_regular_summary_json(root / "corpus-run.json"), "corpus run")
+    runs = [_mapping(item, "corpus run item") for item in _sequence(corpus.get("runs"), "runs")]
+    schemas = {run.get("schema_version") for run in runs}
+    if (reviewed_derived_root is None) != (review_root is None):
+        raise PublicDevelopmentSummaryError(
+            "reviewed derived and private review roots must be supplied together"
+        )
+    if schemas == {"pipeline-run/0.2"}:
+        if reviewed_derived_root is not None or review_root is not None:
+            raise PublicDevelopmentSummaryError(
+                "reviewed derived joins require a sealed current pipeline run"
+            )
+        return _build_legacy_public_development_summary(root)
+    if schemas != {"pipeline-run/0.4"}:
+        raise PublicDevelopmentSummaryError("corpus mixes unsupported pipeline schemas")
+    try:
+        receipt = validate_completed_corpus_run(root)
+    except CompletedCorpusValidationError as error:
+        raise PublicDevelopmentSummaryError(str(error)) from error
+    return _build_current_public_development_summary(
+        receipt,
+        source_run_root=root,
+        review_root=review_root,
+        reviewed_derived_root=reviewed_derived_root,
+    )
+
+
+def _regular_summary_json(path: Path) -> Any:
+    if path.is_symlink() or not path.is_file():
+        raise PublicDevelopmentSummaryError("run root requires a regular corpus-run.json")
+    try:
+        return read_json(path)
+    except (OSError, ValueError) as error:
+        raise PublicDevelopmentSummaryError("corpus-run.json is invalid") from error
+
+
+def write_public_development_summary(
+    run_root: Path,
+    output_path: Path,
+    *,
+    reviewed_derived_root: Path | None = None,
+    review_root: Path | None = None,
+) -> str:
     """Build and atomically write one aggregate outside the private run tree."""
 
     run_root = run_root.resolve()
     output_path = output_path.resolve()
-    try:
-        output_path.relative_to(run_root)
-    except ValueError:
-        pass
-    else:
-        raise PublicDevelopmentSummaryError("public summary output must be outside the run root")
-    return write_json(output_path, build_public_development_summary(run_root))
+    input_roots = [(run_root, "run")]
+    if reviewed_derived_root is not None:
+        input_roots.append((reviewed_derived_root.resolve(), "reviewed derived"))
+    if review_root is not None:
+        input_roots.append((review_root.resolve(), "private review"))
+    for input_root, label in input_roots:
+        try:
+            output_path.relative_to(input_root)
+        except ValueError:
+            continue
+        raise PublicDevelopmentSummaryError(
+            f"public summary output must be outside the {label} root"
+        )
+    return write_json(
+        output_path,
+        build_public_development_summary(
+            run_root,
+            reviewed_derived_root=reviewed_derived_root,
+            review_root=review_root,
+        ),
+    )
 
 
 __all__ = [

@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 
 from proceedings_to_eee.domain.observation import MetricSpec, ReportedValue
-from proceedings_to_eee.resolution.metrics import resolve_metric_value
+from proceedings_to_eee.resolution.metrics import (
+    metric_unit_is_compatible,
+    registry_value_range_issue,
+    resolve_metric_value,
+)
 
 
 @pytest.mark.parametrize("raw,numeric", [(".7314*", 0.7314), ("0.46", 0.46)])
@@ -13,6 +17,30 @@ def test_bounded_decimal_metric_resolves_to_proportion(raw: str, numeric: float)
     )
 
     assert metric.canonical_id == "auroc"
+    assert metric.unit == "proportion"
+    assert metric.min_score == 0.0
+    assert metric.max_score == 1.0
+    assert value.unit == "proportion"
+    assert note is not None
+
+
+@pytest.mark.parametrize("raw_name", ["Mean AUC", "Subgroup AUC", "Pinned AUC"])
+def test_exact_corpus_auc_variants_resolve_without_trusting_provider_metadata(
+    raw_name: str,
+) -> None:
+    metric, value, note = resolve_metric_value(
+        MetricSpec(
+            raw_name=raw_name,
+            canonical_id="auroc",
+            kind="performance",
+            lower_is_better=True,
+        ),
+        ReportedValue(raw="0.960", numeric=0.96),
+    )
+
+    assert metric.canonical_id == "auroc"
+    assert metric.kind == "auroc"
+    assert metric.lower_is_better is False
     assert metric.unit == "proportion"
     assert metric.min_score == 0.0
     assert metric.max_score == 1.0
@@ -54,7 +82,7 @@ def test_percent_unit_can_be_resolved_from_the_exact_evidence_token() -> None:
     assert metric.unit == "percent"
     assert metric.max_score == 100.0
     assert value.unit == "percent"
-    assert note == "unit resolved as percent from evidence-bound printed percent sign"
+    assert note
 
 
 def test_unrelated_percent_in_evidence_does_not_supply_a_unit() -> None:
@@ -62,6 +90,18 @@ def test_unrelated_percent_in_evidence_does_not_supply_a_unit() -> None:
         MetricSpec(raw_name="F1"),
         ReportedValue(raw="73.4", numeric=73.4),
         ["Threshold 73.4 with comparison score 66.1%"],
+    )
+
+    assert metric.unit is None
+    assert value.unit is None
+    assert note is None
+
+
+def test_mixed_identical_raw_notation_does_not_supply_percent_unit() -> None:
+    metric, value, note = resolve_metric_value(
+        MetricSpec(raw_name="Accuracy"),
+        ReportedValue(raw="0.76", numeric=0.76),
+        ["Atlas Accuracy 0.76; baseline 0.76%"],
     )
 
     assert metric.unit is None
@@ -102,3 +142,88 @@ def test_explicit_percent_symbol_is_canonicalized_and_propagated_without_rescali
     assert value.unit == "percent"
     assert value.numeric == 73.4
     assert note is None
+
+
+@pytest.mark.parametrize(
+    "proposed_kind",
+    ["area_under_curve", "performance", "synthetic_bias_metric"],
+)
+def test_registry_metric_kind_overrides_free_form_provider_kind(proposed_kind: str) -> None:
+    metric, _, _ = resolve_metric_value(
+        MetricSpec(
+            raw_name="AUC-ROC",
+            canonical_id="provider_invented_auc",
+            kind=proposed_kind,
+        ),
+        ReportedValue(raw="0.81", numeric=0.81),
+    )
+
+    assert metric.canonical_id == "auroc"
+    assert metric.kind == "auroc"
+
+
+def test_registry_metric_overrides_conflicting_direction_and_bounded_range() -> None:
+    metric, _, _ = resolve_metric_value(
+        MetricSpec(
+            raw_name="F1",
+            lower_is_better=True,
+            unit="proportion",
+            min_score=-1,
+            max_score=7,
+        ),
+        ReportedValue(raw="0.43", numeric=0.43),
+    )
+
+    assert metric.lower_is_better is False
+    assert metric.min_score == 0.0
+    assert metric.max_score == 1.0
+
+
+@pytest.mark.parametrize("unit", ["percent", "proportion", "probability"])
+def test_registry_bounded_metric_accepts_only_supported_rate_units(unit: str) -> None:
+    metric, value, _ = resolve_metric_value(
+        MetricSpec(raw_name="Accuracy", unit=unit),
+        ReportedValue(raw="0.74", numeric=0.74, unit=unit),
+    )
+
+    assert metric_unit_is_compatible(metric, metric.unit)
+    assert value.unit == unit
+
+
+def test_registry_bounded_metric_rejects_dimensional_unit() -> None:
+    metric, value, _ = resolve_metric_value(
+        MetricSpec(raw_name="Accuracy", unit="seconds"),
+        ReportedValue(raw="74.6", numeric=74.6, unit="seconds"),
+    )
+
+    assert metric.canonical_id == "accuracy"
+    assert metric.unit == "seconds"
+    assert value.unit == "seconds"
+    assert not metric_unit_is_compatible(metric, metric.unit)
+
+
+@pytest.mark.parametrize(
+    ("raw", "numeric", "unit"),
+    [("146%", 146.0, "percent"), ("1.46", 1.46, "proportion")],
+)
+def test_registry_bounded_metric_rejects_out_of_range_value(
+    raw: str,
+    numeric: float,
+    unit: str,
+) -> None:
+    metric, value, _ = resolve_metric_value(
+        MetricSpec(raw_name="Accuracy", unit=unit),
+        ReportedValue(raw=raw, numeric=numeric, unit=unit),
+    )
+
+    assert registry_value_range_issue(metric, value) == ("value_outside_registry_metric_bounds")
+
+
+def test_unknown_metric_honors_explicit_range() -> None:
+    metric, value, _ = resolve_metric_value(
+        MetricSpec(raw_name="Custom bounded score", min_score=0, max_score=1),
+        ReportedValue(raw="2", numeric=2),
+    )
+
+    assert metric.canonical_id is None
+    assert registry_value_range_issue(metric, value) == ("value_outside_registry_metric_bounds")

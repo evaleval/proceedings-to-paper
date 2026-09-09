@@ -455,16 +455,18 @@ def _group_regions(kinds: list[RegionKind | None], max_blank_gap: int) -> list[t
 _TRAILING_VALUES = re.compile(r"(?:\s+[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*%?){2,}$")
 
 
-def _row_label_from_cell(cell: str) -> str:
+def _row_label_from_cell(cell: str) -> str | None:
     """Separate a row label from values the layout only single-spaced away from it.
 
     ``Gauge Lumen .53 .64 .58`` is one gutter-delimited cell but two things. Two or more
     trailing value tokens are required before any are stripped, so a label that merely
-    ends in a number, such as ``Model 1``, is left intact.
+    ends in a number, such as ``Model 1``, is left intact. A punctuation-only cell has
+    no normalized word identity and must not become a direct or inherited row label.
     """
 
     stripped = _TRAILING_VALUES.sub("", cell).strip()
-    return stripped or cell
+    candidate = stripped or cell
+    return candidate if any(character.isalnum() for character in candidate) else None
 
 
 _ORDINAL_CELL = re.compile(r"^\d{1,4}$")

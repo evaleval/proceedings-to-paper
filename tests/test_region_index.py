@@ -73,6 +73,14 @@ SINGLE_SPACED_PAGE = """Table 4. Synthetic measurements for paired fixture gauge
       GaugeLumen  .53 .64 .58                              .49 .62 .55
 """
 
+PUNCTUATION_LABEL_PAGE = """Table 10. Synthetic grid with an unlabeled numeric panel.
+
+       —               Slice A       Slice B       0.50
+       0.11            0.12          0.13          0.14
+       0.21            0.22          0.23          0.24
+       α-model         0.31          0.32          0.33
+"""
+
 
 def _page(text: str, page: int = 13, source_id: str = "src_paper") -> PageFragment:
     return PageFragment(
@@ -217,6 +225,23 @@ def test_a_label_ending_in_one_number_is_left_intact() -> None:
     location = locate_quote(_page(text, page=4), "Model 2 0.91 0.88")
     assert location is not None
     assert location.row_label == "Model 2"
+
+
+@pytest.mark.parametrize("content_free_label", ["—", "___"])
+def test_punctuation_only_row_label_is_not_direct_or_inherited(
+    content_free_label: str,
+) -> None:
+    text = PUNCTUATION_LABEL_PAGE.replace("—", content_free_label)
+    index = build_page_region_index(_page(text, page=5))
+    table = next(region for region in index.regions if region.kind is RegionKind.TABLE)
+
+    assert [row.row_label for row in table.rows] == [None, None, None, "α-model"]
+    assert [row.effective_row_label for row in table.rows] == [
+        None,
+        None,
+        None,
+        "α-model",
+    ]
 
 
 def test_index_is_deterministic_and_bound_to_the_page_text() -> None:

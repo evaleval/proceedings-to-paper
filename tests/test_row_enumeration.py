@@ -29,13 +29,16 @@ from proceedings_to_eee.extraction.result_blocks import segment_page_result_bloc
 from proceedings_to_eee.extraction.row_enumeration import (
     RowDisposition,
     RowEnumerationConfig,
+    RowEnumerationPlan,
     UnbatchableReason,
     build_row_enumeration_plan,
     make_row_batch,
 )
+from proceedings_to_eee.extraction.row_validation import validate_outcome_against
 from proceedings_to_eee.providers.openrouter import (
     ProviderCall,
     StructuredResponse,
+    completion_token_parameter_for_model,
     structured_request_contract,
 )
 
@@ -47,6 +50,14 @@ SYNTHETIC_PAGE = """Table 7. Synthetic evaluation scores for invented systems.
        Maple      .21 .74 .33                              .82 .61 .70
        Willow     .16 .69 .26                              .79 .52 .63
        Aspen      .25 .62 .36                              .77 .35 .48
+"""
+
+PUNCTUATION_LABEL_PAGE = """Table 10. Synthetic grid with an unlabeled numeric panel.
+
+       —               Slice A       Slice B       0.50
+       0.11            0.12          0.13          0.14
+       0.21            0.22          0.23          0.24
+       α-model         0.31          0.32          0.33
 """
 
 
@@ -95,7 +106,10 @@ def _scope() -> dict[str, Any]:
     }
 
 
-def _observation(*, row, system: str, value: str, column: str = "F1") -> dict[str, Any]:
+def _observation(*, row, system: str, value: str, column: str | None = None) -> dict[str, Any]:
+    if column is None:
+        matched = next((item for item in row.values if item.raw == value), row.values[0])
+        column = matched.header_path[-1].headers[0].raw
     return {
         "claim_type": "primary_result",
         "roles": [
@@ -180,16 +194,27 @@ class _ScriptedClient:
                 model_requested=kwargs["model"],
                 model_returned=kwargs["model"],
                 provider_returned="fixture",
-                prompt_sha256=hashlib.sha256(kwargs["user"].encode("utf-8")).hexdigest(),
+                prompt_sha256=hashlib.sha256(
+                    json.dumps(
+                        [
+                            {"role": "system", "content": kwargs["system"]},
+                            {"role": "user", "content": kwargs["user"]},
+                        ],
+                        sort_keys=True,
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                ).hexdigest(),
                 response_sha256=hashlib.sha256(
                     json.dumps(payload, sort_keys=True).encode("utf-8")
                 ).hexdigest(),
                 temperature=kwargs["temperature"],
                 reasoning_effort=kwargs["reasoning_effort"],
                 max_tokens=kwargs["max_tokens"],
+                completion_token_parameter=completion_token_parameter_for_model(kwargs["model"]),
                 seed=kwargs["seed"],
                 schema_name=kwargs["schema_name"],
                 schema_sha256=contract["schema"]["schema_sha256"],
+                require_parameters=kwargs["require_parameters"],
                 latency_seconds=0.01,
                 input_tokens=100,
                 output_tokens=20,
@@ -253,6 +278,99 @@ def test_plan_assigns_stable_structural_ids_and_complete_context() -> None:
     assert juniper.row_id in rendered
     assert "evidence_coordinates" in rendered
     assert "value_positions" in rendered
+
+
+@pytest.mark.parametrize("content_free_label", ["—", "___"])
+def test_punctuation_only_label_plan_is_deterministic_and_complete(
+    content_free_label: str,
+) -> None:
+    text = PUNCTUATION_LABEL_PAGE.replace("—", content_free_label)
+    first = _plan(text)
+    second = _plan(text)
+
+    assert first.model_dump(mode="json") == second.model_dump(mode="json")
+    assert first.telemetry.dense_tables == 1
+    assert first.telemetry.rows_planned == len(first.rows) == 3
+    assert first.telemetry.unbatchable_rows == 0
+    assert [row.span.start_line for row in first.rows] == [4, 5, 6]
+    assert [row.row_label for row in first.rows] == [None, None, "α-model"]
+    assert [row.row_label_binding for row in first.rows[:2]] == [None, None]
+
+    planned = {row.row_id for row in first.rows}
+    batched = {row.row_id for batch in first.batches for row in batch.rows}
+    unbatchable = {item.row_id for item in first.unbatchable_rows}
+    assert len(planned) == len(first.rows)
+    assert batched.isdisjoint(unbatchable)
+    assert batched | unbatchable == planned
+    assert RowEnumerationPlan.model_validate(first.model_dump(mode="json")) == first
+
+
+@pytest.mark.parametrize("mutation", ["duplicate_row", "duplicate_batch", "telemetry_lie"])
+def test_plan_model_rejects_duplicate_ownership_and_telemetry_lies(mutation: str) -> None:
+    payload = _plan().model_dump(mode="json")
+    if mutation == "duplicate_row":
+        payload["rows"].append(payload["rows"][0])
+    elif mutation == "duplicate_batch":
+        payload["batches"].append(payload["batches"][0])
+    else:
+        payload["telemetry"]["rows_planned"] += 1
+
+    with pytest.raises(ValueError):
+        RowEnumerationPlan.model_validate(payload)
+
+
+def test_row_identity_and_value_cells_include_table_geometry() -> None:
+    plan = _plan()
+    first = plan.rows[0]
+
+    assert len({value.numeric_token_id for value in first.values}) == len(first.values)
+    assert len({value.cell_id for value in first.values}) < len(first.values)
+    assert any(
+        left.cell_id == right.cell_id and left.numeric_token_id != right.numeric_token_id
+        for index, left in enumerate(first.values)
+        for right in first.values[index + 1 :]
+    )
+    payload = first.model_dump(mode="json")
+    payload["region_id"] = "another-overlapping-region"
+
+    with pytest.raises(ValueError, match="physical row identity"):
+        type(first).model_validate(payload)
+
+
+def test_plan_rejects_noncanonical_batch_assignment_even_when_rows_are_known() -> None:
+    plan = _plan()
+    payload = plan.model_dump(mode="json")
+    reversed_rows = list(reversed(plan.batches[0].rows))
+    payload["batches"][0] = make_row_batch(reversed_rows).model_dump(mode="json")
+
+    with pytest.raises(ValueError, match="canonical partition"):
+        RowEnumerationPlan.model_validate(payload)
+
+
+def test_terminal_validation_rejects_overlapping_final_ownership() -> None:
+    plan = _plan()
+    client = _ScriptedClient([_all_not_result for _ in plan.batches])
+    outcome = enumerate_row_plan(
+        client=client,  # type: ignore[arg-type]
+        model="fixture/model",
+        paper_id="fixture-paper",
+        paper_title="Fixture Paper",
+        plan=plan,
+    )
+    outcome.unresolved_row_ids.append(next(iter(outcome.records)))
+
+    with pytest.raises(ValueError, match="partition"):
+        validate_outcome_against(
+            plan,
+            outcome,
+            paper_id="fixture-paper",
+            paper_title="Fixture Paper",
+            model="fixture/model",
+            max_tokens=16_000,
+            temperature=None,
+            reasoning_effort="minimal",
+            seed=None,
+        )
 
 
 def test_plan_only_uses_shown_non_reference_dense_rows_and_hard_bounds() -> None:
@@ -371,7 +489,7 @@ def test_row_schema_and_prompt_are_independent_from_legacy_contract() -> None:
     assert schema["additionalProperties"] is False
     assert set(schema["required"]) == {"dispositions", "warnings"}
     assert WireRowExtraction.model_config["extra"] == "forbid"
-    assert prompt_hash() == "ddbc62294a689f3637dcc2f87156e8b48dd32c9ee1833a5ca27dd033e5aff6de"
+    assert prompt_hash() == "4d77a18169453339f394812821314b0cece217ff57c68cdc3f764ee39786df62"
     assert legacy_contract["schema"]["schema_sha256"] == (
         "25f45c3acb53c5dbae4861e401a12256171a53fa568fcb826dbbc85deebcbcaf"
     )

@@ -1,0 +1,35 @@
+{
+  "synthetic_only": true,
+  "entries": [
+    {
+      "observation_id": "obs_synthetic_1",
+      "paper_id": "synthetic-paper-1",
+      "label": "correct",
+      "label_note": "The stated tuple matches Cedar on the test split."
+    },
+    {
+      "observation_id": "obs_synthetic_2",
+      "paper_id": "synthetic-paper-2",
+      "label": "incorrect",
+      "label_note": "The reported value belongs to Pine, not Cedar."
+    },
+    {
+      "observation_id": "obs_synthetic_3",
+      "paper_id": "synthetic-paper-3",
+      "label": "incorrect",
+      "label_note": "The reported value belongs to Cedar, not Pine."
+    },
+    {
+      "observation_id": "obs_synthetic_4",
+      "paper_id": "synthetic-paper-4",
+      "label": "correct",
+      "label_note": "The tuple is correct even though the model abstained."
+    },
+    {
+      "observation_id": "obs_synthetic_5",
+      "paper_id": "synthetic-paper-5",
+      "label": "cannot_tell",
+      "label_note": "This supplied page does not identify the dataset or split."
+    }
+  ]
+}

@@ -374,3 +374,23 @@ def test_unlocated_table_values_do_not_fall_back_to_semantic_merging() -> None:
         "Model column A",
         "Model column B",
     }
+
+
+def test_forged_exact_ids_do_not_bind_when_frozen_layout_cannot_resolve_them() -> None:
+    layout = _table_layout()
+    candidate = _candidate("SysA", "4.28", "Synthetic GroupA Mean")
+    candidate.evidence[0] = candidate.evidence[0].model_copy(
+        update={
+            "quote": "fabricated row quote 4.28",
+            "quote_sha256": None,
+            "planned_row_id": "trow_forged",
+            "cell_id": "tcell_forged",
+            "numeric_token_id": "ttoken_forged",
+        }
+    )
+
+    binding = PhysicalCellLocator({SOURCE_ID: layout}).bind(candidate)
+
+    assert binding.status is PhysicalCellBindingStatus.UNLOCATED
+    assert binding.identity is None
+    assert binding.reason == ("claimed exact table identity was not resolved from frozen layout")

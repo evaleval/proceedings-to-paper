@@ -63,8 +63,9 @@
         (1.95,0)--(2.55,0);
 \end{scope}\end{scope}}
 
-% Candidate evidence is narrowed to verified support, semantics, cell identity,
-% and producer origin. Ambiguity remains outside canonical composition.
+% Candidate evidence is narrowed through deterministic support/cell checks and
+% an independent, demotion-only tuple-concordance gate. Ambiguity remains
+% outside canonical composition.
 \newcommand{\icnResolve}[2]{%
 \begin{scope}[shift={#1}]
 \begin{scope}[x={#2},y={#2},shift={(-0.35,0.30)},line join=round,line cap=butt]
@@ -82,8 +83,9 @@
   \draw[white,line width=1.05pt] (-0.70,-3.72)--(-0.10,-4.28)--(1.02,-3.05);
 \end{scope}\end{scope}}
 
-% Positive producer origin and all export predicates precede deterministic JSON
-% composition. Ineligible candidates remain in the review layer drawn at right.
+% Independent verification, candidate-specific producer-origin retrieval, and
+% all export predicates precede deterministic JSON composition. Ineligible
+% candidates remain in the review layer drawn at right.
 \newcommand{\icnCompose}[2]{%
 \begin{scope}[shift={#1}]
 \begin{scope}[x={#2},y={#2},shift={(0,0.10)},line join=round,line cap=round]
@@ -114,7 +116,7 @@
   badge/.style={circle,fill=Blue700,text=white,inner sep=0pt,
                 minimum size=3.8mm,font=\scriptsize\bfseries}
 ]
-\path[use as bounding box] (-0.18,1.28) rectangle (19.24,-3.22);
+\path[use as bounding box] (-0.18,1.28) rectangle (19.52,-3.78);
 
 % Four-stage AISI spine.
 \icnFreeze{(1.35,-0.70)}{1.23mm}
@@ -133,48 +135,64 @@
 
 \node[ttl] (t2) at (4.85,-1.95) {Result Discovery};
 \node[badge] at ($(t2.west)+(-0.30,0.085)$) {2};
-\node[ttl] at (4.85,-2.32) {\& Proposals};
+\node[ttl] at (4.85,-2.32) {\& Row Proposals};
 
-\node[ttl] (t3) at (8.35,-1.95) {Candidate Checks};
+\node[ttl] (t3) at (8.35,-1.95) {Candidate, Cell};
 \node[badge] at ($(t3.west)+(-0.30,0.085)$) {3};
-\node[ttl] at (8.35,-2.32) {\& Consolidation};
+\node[ttl] at (8.35,-2.32) {\& Tuple Gates};
 
-\node[ttl] (t4) at (11.85,-1.95) {Origin Gate \&};
+\node[ttl] (t4) at (11.85,-1.95) {Verify, Origin};
 \node[badge] at ($(t4.west)+(-0.30,0.085)$) {4};
-\node[ttl] at (11.85,-2.32) {EEE Projection};
+\node[ttl] at (11.85,-2.32) {\& EEE Projection};
 
-% Conditional EEE projection behind the always-preserved candidate/review layer.
-\fill[white,rounded corners=2pt] (14.32,-1.82) rectangle (18.58,1.18);
+% Automatic production is a quote-free projection authorized only by a passing
+% tuple gate and an accepting independent-verifier gate.
+\node[font=\tiny\bfseries,color=Blue700,align=center,inner sep=0pt]
+      at (13.43,0.02) {AUTO-AUTHORIZED\\tuple + verifier pass};
+\fill[white,rounded corners=2pt] (14.32,-1.72) rectangle (19.04,1.18);
 \begin{scope}
-  \clip[rounded corners=2pt] (14.32,-1.82) rectangle (18.58,1.18);
-  \fill[Blue700] (14.32,0.69) rectangle (18.58,1.18);
+  \clip[rounded corners=2pt] (14.32,-1.72) rectangle (19.04,1.18);
+  \fill[Blue700] (14.32,0.69) rectangle (19.04,1.18);
 \end{scope}
 \draw[rounded corners=2pt,draw=Ink,line width=1.0pt]
-      (14.32,-1.82) rectangle (18.58,1.18);
+      (14.32,-1.72) rectangle (19.04,1.18);
 \node[font=\scriptsize\bfseries,text=white,anchor=base west,inner sep=0pt]
-      at (14.50,0.86) {Every Eval Ever (gated)};
+      at (14.50,0.86) {QUOTE-FREE EEE};
 
-% Candidate/review layer in front. This is produced even when no candidate passes
-% the positive-origin and export gates.
+% Exact evidence, proposals, and withheld candidates stay in the private layer.
+% A tuple-only run remains here and cannot authorize canonical EEE.
 \begin{scope}
-  \clip[rounded corners=2pt] (14.75,-2.54) rectangle (18.98,0.57);
-  \fill[white] (14.75,-2.54) rectangle (18.98,0.57);
-  \fill[Ink60] (14.75,0.05) rectangle (18.98,0.57);
+  \clip[rounded corners=2pt] (14.72,-2.47) rectangle (18.91,0.57);
+  \fill[white] (14.72,-2.47) rectangle (18.91,0.57);
+  \fill[Ink60] (14.72,0.05) rectangle (18.91,0.57);
 \end{scope}
 \draw[rounded corners=2pt,draw=Ink,line width=1.15pt]
-      (14.75,-2.54) rectangle (18.98,0.57);
+      (14.72,-2.47) rectangle (18.91,0.57);
 \node[font=\scriptsize\bfseries,text=white,anchor=base west,inner sep=0pt]
-      at (14.94,0.23) {Candidate / Review Layer};
-\node[lbl] at (14.96,-0.69) {model};
-\draw[Ink,line width=0.85pt] (15.95,-0.73)--(18.60,-0.73);
-\node[lbl] at (14.96,-1.12) {evidence};
-\draw[Ink,line width=0.85pt] (16.12,-1.16)--(18.38,-1.16);
-\node[lbl] at (14.96,-1.55) {origin};
-\draw[Ink,line width=0.85pt] (16.00,-1.59)--(18.60,-1.59);
-\draw[Rule,line width=0.45pt] (14.88,-1.88)--(18.85,-1.88);
-\node[font=\scriptsize,color=Carmine,anchor=base west,inner sep=0pt]
-      at (14.96,-2.23) {withheld items remain inspectable};
+      at (14.91,0.23) {PRIVATE CANDIDATE / REVIEW};
+\node[lbl] at (14.94,-0.55) {tuple};
+\draw[Ink,line width=0.85pt] (15.80,-0.59)--(18.50,-0.59);
+\node[lbl] at (14.94,-0.95) {evidence};
+\draw[Ink,line width=0.85pt] (16.04,-0.99)--(18.30,-0.99);
+\node[lbl] at (14.94,-1.35) {origin};
+\draw[Ink,line width=0.85pt] (15.88,-1.39)--(18.50,-1.39);
+\draw[Rule,line width=0.45pt] (14.86,-1.68)--(18.77,-1.68);
+\node[font=\scriptsize\bfseries,color=Carmine,anchor=base west,inner sep=0pt]
+      at (14.94,-2.02) {tuple only = review only};
+\node[font=\tiny,color=Ink60,anchor=base west,inner sep=0pt]
+      at (14.94,-2.29) {withheld items + exact evidence stay private};
 
-\node[sec] at (16.65,-2.93) {review layer + gated EEE projection};
+% Human authority is a separate, explicit route: it re-attests the unchanged
+% full tuple and strict result evidence rather than treating a model pass as review.
+\fill[white,rounded corners=2pt] (14.42,-3.57) rectangle (19.12,-2.76);
+\draw[rounded corners=2pt,draw=Blue700,line width=0.95pt]
+      (14.42,-3.57) rectangle (19.12,-2.76);
+\node[font=\tiny\bfseries,color=Blue700,anchor=base west,inner sep=0pt]
+      at (14.59,-3.04) {SEPARATE HUMAN PATH};
+\node[font=\tiny,color=Ink,anchor=base west,inner sep=0pt]
+      at (14.59,-3.34) {full tuple + strict result-evidence re-attestation};
+\draw[Blue700,line width=0.75pt,dash pattern=on 1.4pt off 1.0pt,
+      -{Stealth[length=1.8mm,width=1.35mm]}]
+      (19.12,-3.17) .. controls (19.45,-2.48) and (19.42,-0.05) .. (19.04,0.82);
 \end{tikzpicture}
 \end{document}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,6 +20,12 @@ from proceedings_to_eee.evaluation.row_plan import (
     build_run_row_plan_report,
 )
 from proceedings_to_eee.extraction.pdf_layout import PageFragment, PdfLayout
+from proceedings_to_eee.extraction.prompt import (
+    ROW_ENUMERATION_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+    page_prompt,
+    row_batch_prompt,
+)
 from proceedings_to_eee.extraction.result_blocks import (
     ResultBlock,
     ResultBlockConfig,
@@ -33,7 +40,10 @@ from proceedings_to_eee.io import (
     write_json,
     write_jsonl,
 )
-from proceedings_to_eee.providers.openrouter import ProviderCall
+from proceedings_to_eee.providers.openrouter import (
+    ProviderCall,
+    completion_token_parameter_for_model,
+)
 from proceedings_to_eee.sources.manifest import FrozenSource, SourceManifest, SourceRole
 
 PAGE = """Table 2. Detection performance per model.
@@ -120,6 +130,47 @@ def _write_ledger(
 ) -> None:
     plan = _plan(paper_dir)
     unresolved = unresolved_row_ids or []
+    response_sha256 = "d" * 64
+    planned = {row.row_id: row for row in plan.rows}
+    enriched: list[tuple[str, str, list[dict]]] = []
+    for row_id, disposition, candidates in dispositions:
+        row = planned.get(row_id)
+        bound_candidates: list[dict] = []
+        for raw_candidate in candidates:
+            candidate = json.loads(json.dumps(raw_candidate))
+            if row is not None:
+                candidate["paper_id"] = paper_dir.name
+                candidate["extraction_method"] = "openrouter:fixture/model:row-enumeration"
+                candidate["raw_payload_hash"] = response_sha256
+                raw_value = candidate.get("value", {}).get("raw")
+                cells = [value for value in row.values if value.raw == raw_value]
+                cell_id = cells[0].cell_id if len(cells) == 1 else None
+                numeric_token_id = cells[0].numeric_token_id if len(cells) == 1 else None
+                header_ids = (
+                    [
+                        header.header_id
+                        for binding in cells[0].header_path
+                        for header in binding.headers
+                    ]
+                    if len(cells) == 1
+                    else []
+                )
+                for anchor in candidate["evidence"]:
+                    anchor.update(
+                        {
+                            "source_id": row.source_id,
+                            "page": row.page,
+                            "label": row.table_label,
+                            "row": row.row_label,
+                            "region_id": row.region_id,
+                            "planned_row_id": row.row_id,
+                            "cell_id": cell_id,
+                            "numeric_token_id": numeric_token_id,
+                            "header_ids": header_ids,
+                        }
+                    )
+            bound_candidates.append(candidate)
+        enriched.append((row_id, disposition, bound_candidates))
     records = {
         row_id: {
             "row_id": row_id,
@@ -127,25 +178,79 @@ def _write_ledger(
             "candidates": candidates,
             "note": None,
         }
-        for row_id, disposition, candidates in dispositions
+        for row_id, disposition, candidates in enriched
     }
     counts = {name: 0 for name in ("result", "not_result", "uncertain")}
-    for _, disposition, _ in dispositions:
+    for _, disposition, _ in enriched:
         counts[disposition] += 1
     plan_sha256 = write_json(paper_dir / "private" / "row-enumeration-plan.json", plan)
-    write_json(
-        paper_dir / "private" / "row-enumeration.json",
+    call = ProviderCall(
+        model_requested="fixture/model",
+        prompt_sha256="a" * 64,
+        response_sha256=response_sha256,
+        temperature=0.0,
+        reasoning_effort="minimal",
+        max_tokens=16_000,
+        completion_token_parameter="max_tokens",
+        seed=7,
+        schema_name="paper_table_row_dispositions",
+        schema_sha256="b" * 64,
+        latency_seconds=0.1,
+        attempts=1,
+    )
+    run = read_json(paper_dir / "run.json")
+    run["row_enumeration"] = {
+        "model": "fixture/model",
+        "calls": [call.model_dump(mode="json", exclude_none=True)],
+    }
+    write_json(paper_dir / "run.json", run)
+    terminals = {
+        row_id: {
+            "row_id": row_id,
+            "state": disposition,
+            "disposition": record,
+            "unsupported_reasons": [],
+            "unresolved_reason": None,
+        }
+        for row_id, record in records.items()
+        for disposition in [record["disposition"]]
+    }
+    terminals.update(
         {
-            "schema_version": "row-enumeration-outcome/0.1",
+            row_id: {
+                "row_id": row_id,
+                "state": "unresolved",
+                "disposition": None,
+                "unsupported_reasons": [],
+                "unresolved_reason": "fixture_unresolved",
+            }
+            for row_id in unresolved
+        }
+    )
+    for item in plan.unbatchable_rows:
+        terminals[item.row_id] = {
+            "row_id": item.row_id,
+            "state": "unsupported",
+            "disposition": None,
+            "unsupported_reasons": [reason.value for reason in item.reasons],
+            "unresolved_reason": None,
+        }
+    write_json(
+        paper_dir / "private" / "row-terminal-states.json",
+        {
+            "schema_version": "row-terminal-states/0.1",
+            "paper_id": paper_dir.name,
             "plan_sha256": plan_sha256,
-            "records": records,
-            "unresolved_row_ids": unresolved,
-            "unbatchable_row_ids": [row.row_id for row in plan.unbatchable_rows],
-            "telemetry": {
-                "rows_resolved": len(records),
-                "rows_unresolved": len(unresolved),
-                "rows_unbatchable": len(plan.unbatchable_rows),
-                "dispositions": counts,
+            "terminal_by_row": terminals,
+            "protocol_events": [],
+            "invalid_row_reasons": {},
+            "counts": {
+                "planned": len(terminals),
+                "result": counts["result"],
+                "not_result": counts["not_result"],
+                "uncertain": counts["uncertain"],
+                "unresolved": len(unresolved),
+                "unsupported": len(plan.unbatchable_rows),
             },
         },
     )
@@ -208,40 +313,109 @@ def _next_run_fixture(
     )
     assert current_blocks
     model = "fixture/model"
+    code_state = {
+        "git_commit": "fixture",
+        "git_dirty": False,
+        "git_available": True,
+        "source_tree_sha256": "9" * 64,
+    }
+    monkeypatch.setattr("proceedings_to_eee.pipeline._code_state", lambda _: code_state)
     checkpoint_contract = {
-        "schema_version": "extractor-block-checkpoint-contract/0.1",
+        "schema_version": "extractor-block-checkpoint-contract/0.3",
         "paper_id": spec.paper_id,
         "paper_title": spec.title,
         "source_manifest_sha256": sha256_bytes(canonical_json_bytes(source_manifest)),
         "layout_parser": layout.parser,
         "layout_parser_version": layout.parser_version,
+        "result_block_segmentation": {
+            "max_blocks_per_page": 6,
+        },
+        "blocks": [
+            {
+                "block_id": block.block_id,
+                "source_id": block.source_id,
+                "page": block.page,
+                "text_sha256": block.text_sha256,
+            }
+            for block in current_blocks
+        ],
         "extractor": row_plan_module._current_extractor_configuration(model),
+        "code": code_state,
     }
-    call = ProviderCall(
-        model_requested=model,
-        model_returned=model,
-        prompt_sha256="b" * 64,
-        response_sha256="c" * 64,
-        temperature=0.0,
-        reasoning_effort="minimal",
-        max_tokens=16_000,
-        seed=7,
-        schema_name="paper_evaluation_candidates",
-        schema_sha256="d" * 64,
-        latency_seconds=0.01,
-        attempts=1,
-    )
+    calls = {}
+    for block in current_blocks:
+        fragment = PageFragment(
+            fragment_id=block.block_id,
+            source_id=block.source_id,
+            page=block.page,
+            text=block.prompt_text(),
+            text_sha256=hashlib.sha256(block.prompt_text().encode()).hexdigest(),
+            character_count=len(block.prompt_text()),
+            numeric_token_count=block.numeric_token_count,
+            result_signal_score=block.result_signal_score,
+        )
+        prompt_sha256 = hashlib.sha256(
+            json.dumps(
+                [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": page_prompt(
+                            paper_title=spec.title,
+                            paper_id=spec.paper_id,
+                            fragment=fragment,
+                        ),
+                    },
+                ],
+                sort_keys=True,
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+        calls[block.block_id] = ProviderCall(
+            model_requested=model,
+            model_returned=model,
+            prompt_sha256=prompt_sha256,
+            response_sha256="c" * 64,
+            temperature=checkpoint_contract["extractor"]["temperature"],
+            reasoning_effort="minimal",
+            max_tokens=16_000,
+            completion_token_parameter=completion_token_parameter_for_model(model),
+            seed=checkpoint_contract["extractor"]["seed"],
+            schema_name="paper_evaluation_candidates",
+            schema_sha256=checkpoint_contract["extractor"]["request_contract"]["schema"][
+                "schema_sha256"
+            ],
+            require_parameters=checkpoint_contract["extractor"]["request_contract"]["routing"][
+                "require_parameters"
+            ],
+            latency_seconds=0.01,
+            attempts=1,
+        )
     write_json(
         paper / "private" / "extractor-checkpoint.json",
         {
-            "schema_version": "extractor-block-checkpoint/0.1",
+            "schema_version": "extractor-block-checkpoint/0.3",
             "contract": checkpoint_contract,
-            "contract_sha256": "e" * 64,
+            "contract_sha256": sha256_bytes(canonical_json_bytes(checkpoint_contract)),
             "blocks": {
                 block.block_id: {
                     "block_text_sha256": block.text_sha256,
+                    "attempts": [
+                        {
+                            "block_id": block.block_id,
+                            "block_text_sha256": block.text_sha256,
+                            "depth": 0,
+                            "status": "success",
+                            "completed_provider_call": True,
+                            "call": calls[block.block_id].model_dump(mode="json"),
+                            "candidates": [],
+                            "warnings": [],
+                            "safe_details": {},
+                        }
+                    ],
                     "candidates": [],
-                    "call": call,
+                    "calls": [calls[block.block_id].model_dump(mode="json")],
+                    "successful_call_indexes": [0],
                     "warnings": [],
                 }
                 for block in current_blocks
@@ -275,7 +449,7 @@ def _write_compatible_row_checkpoint(
         "limits": plan.config.model_dump(mode="json"),
     }
     contract = {
-        "schema_version": "row-enumeration-checkpoint-contract/0.1",
+        "schema_version": "row-enumeration-checkpoint-contract/0.4",
         "paper_id": spec.paper_id,
         "paper_title": spec.title,
         "source_manifest_sha256": sha256_bytes(canonical_json_bytes(manifest)),
@@ -284,28 +458,49 @@ def _write_compatible_row_checkpoint(
         "plan_sha256": sha256_bytes(canonical_json_bytes(plan)),
         "row_enumeration": row_configuration,
         "code": {
-            "git_commit": "old-code",
-            "git_dirty": True,
+            "git_commit": "fixture",
+            "git_dirty": False,
             "git_available": True,
             "source_tree_sha256": "9" * 64,
         },
     }
-    call = ProviderCall(
-        model_requested=model,
-        model_returned=model,
-        prompt_sha256="1" * 64,
-        response_sha256="2" * 64,
-        temperature=0.0,
-        reasoning_effort="minimal",
-        max_tokens=16_000,
-        seed=7,
-        schema_name="paper_table_row_dispositions",
-        schema_sha256="3" * 64,
-        latency_seconds=0.01,
-        attempts=1,
-    )
     entries = {}
     for batch in plan.batches:
+        prompt_sha256 = hashlib.sha256(
+            json.dumps(
+                [
+                    {"role": "system", "content": ROW_ENUMERATION_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": row_batch_prompt(
+                            paper_title=spec.title,
+                            paper_id=spec.paper_id,
+                            batch=batch,
+                        ),
+                    },
+                ],
+                sort_keys=True,
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+        call = ProviderCall(
+            model_requested=model,
+            model_returned=model,
+            prompt_sha256=prompt_sha256,
+            response_sha256="2" * 64,
+            temperature=row_configuration["temperature"],
+            reasoning_effort=row_configuration["reasoning_effort"],
+            max_tokens=row_configuration["max_tokens"],
+            completion_token_parameter=completion_token_parameter_for_model(model),
+            seed=row_configuration["seed"],
+            schema_name="paper_table_row_dispositions",
+            schema_sha256=row_configuration["request_contract"]["schema"]["schema_sha256"],
+            require_parameters=row_configuration["request_contract"]["routing"][
+                "require_parameters"
+            ],
+            latency_seconds=0.01,
+            attempts=1,
+        )
         entries[batch.batch_id] = {
             "batch_sha256": sha256_bytes(canonical_json_bytes(batch)),
             "records": {
@@ -335,13 +530,31 @@ def _write_compatible_row_checkpoint(
             "unknown_row_ids": [],
             "invalid_row_reasons": {},
             "warnings": [],
-            "telemetry": {},
+            "telemetry": {
+                "rows_resolved": len(batch.rows),
+                "rows_unresolved": 0,
+                "rows_unbatchable": 0,
+                "dispositions": {
+                    "result": 0,
+                    "not_result": len(batch.rows),
+                    "uncertain": 0,
+                },
+                "calls": 1,
+                "base_calls": 1,
+                "recovery_calls": 0,
+                "attempts": 1,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "reasoning_tokens": 0,
+                "total_tokens": 0,
+                "cost_usd": 0.0,
+            },
         }
     checkpoint_path = paper_dir / "private" / "row-enumeration-checkpoint.json"
     write_json(
         checkpoint_path,
         {
-            "schema_version": "row-enumeration-checkpoint/0.1",
+            "schema_version": "row-enumeration-checkpoint/0.4",
             "contract": contract,
             "contract_sha256": sha256_bytes(canonical_json_bytes(contract)),
             "batches": entries,
@@ -462,7 +675,7 @@ def test_malformed_or_mismatched_ledger_fails_closed(tmp_path: Path) -> None:
         unresolved_row_ids=[rows[1].row_id, "trow_unknown"],
     )
 
-    with pytest.raises(ValueError, match="unknown row ids"):
+    with pytest.raises(ValueError, match="invalid row terminal ledger"):
         score_paper_row_coverage(paper)
 
 
@@ -489,7 +702,7 @@ def test_not_result_with_a_candidate_is_rejected_by_typed_ledger(tmp_path: Path)
         unresolved_row_ids=[rows[1].row_id, rows[2].row_id],
     )
 
-    with pytest.raises(ValueError, match="malformed disposition record"):
+    with pytest.raises(ValueError, match="malformed row enumeration ledger"):
         score_paper_row_coverage(paper)
 
 

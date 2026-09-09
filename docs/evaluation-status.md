@@ -1,78 +1,109 @@
-# Evaluation status and claim boundary
+# Evaluation status
 
-This project is ready to share as a research prototype for collaboration. It is
-not yet evidence for unattended proceedings ingestion.
+ERE is an operational research prototype. Its implementation can extract candidates,
+preserve source evidence, support review, and compose schema-valid EEE. The accuracy
+of the current real-paper output has not been established by human annotation.
 
-## Results that can be stated
+This page describes saved census artifacts dated **2026-09-05**. Preparing the
+public repository did not rerun paid extraction. The code snapshot and those saved
+artifacts must not be treated as an independently reproduced experiment.
 
-- The immutable first run on a ten-paper holdout recovered `5/10 = 0.5` selected
-  targets. This is selected-target recall over one audited target per paper, not
-  whole-paper recall.
-- After a generic composition fix and bounded technical retry, the same ten
-  inspected papers yielded `7/10 = 0.7`. This is explicitly post-hoc and must
-  not be presented as a held-out result.
-- The current open-development run completed all 380 selected legacy extraction
-  blocks. Its bounded row plan accounted for all 334 planned rows: 315 received
-  a typed disposition (`177` result, `94` not-result, `44` uncertain), 17
-  remained unresolved, and two were explicitly unbatchable.
-- The run reduced 1,297 proposals to 1,078 candidates by removing 219 duplicate
-  proposals. Of the retained candidates, 1,055 require review and 23 are not
-  eligible. No candidate established positive `PAPER_PRODUCED` origin, so zero
-  canonical EEE records were emitted.
-- Candidate-layer recall over the pre-existing open-development references was
-  `106/109 = 0.972477` micro and `0.7` macro. The denominator is not a whole-paper
-  gold standard, so this is not canonical-EEE recall, holdout evidence, or
-  generalization evidence.
-- The deterministic suite spans source freezing, extraction contracts, evidence
-  checks, row planning, attribution, composition, replay, review cards, and
-  privacy boundaries.
+## Latest saved counts
 
-## Results that cannot yet be stated
+| Quantity | Count | Interpretation |
+| --- | ---: | --- |
+| Usable corpus papers | 3,251 | Available working corpus, not an evaluated gold standard |
+| Papers processed | 105 | Run coverage |
+| Papers with candidates | 99 | Candidate-bearing subset of processed papers |
+| Candidate observations | 4,778 | Proposed results retained for checking and review |
+| Candidates with textual support | 4,202 | Local evidence support, not semantic correctness |
+| Schema-valid tiered EEE records | 317 | Output under an explicitly weaker export policy |
+| Papers represented in tiered EEE | 56 | Output coverage, not paper completeness |
+| Observations represented in tiered EEE | 1,192 | Several observations can share one EEE record |
+| Canonical `positive_only` EEE records | 0 | No output passed that export policy in the saved census |
 
-- Precision is unmeasured. The previously reported `0.083333` was caused by an
-  invalid scoring denominator and is withdrawn. The corrected `1/2` basis is
-  too small to support a rate and must not be relabelled as `0.5` precision.
-- The development run does not establish the correctness of the 315 row
-  dispositions. That requires independent human annotation with genuine
-  negative and mixed cases.
-- Complete-tuple correctness, non-result-row specificity, false-positive rate,
-  and current-version generalization have not been established through an
-  independently annotated sample.
-- The present deterministic attribution resolver can demote or abstain but
-  cannot positively assert that a paper produced a result. Canonical EEE output
-  can therefore be empty even when the review layer found useful candidates.
+The [machine-readable summary](../results/census-summary-2026-09-05.json) is an
+allowlisted aggregate. Real-paper source files, individual candidate data, evidence
+quotations, and private annotations are not distributed with it.
 
-## Current public development artifact
+The latest local work plan records 3,080 unstarted papers and a 60-paper evaluation
+reserve. These planning counts are not a claim that all remaining papers have the
+same availability or execution state.
 
-The quote-free aggregate is
-[`results/current-development-summary.json`](../results/current-development-summary.json).
-Its technical status is `partial_failure` because 17 batchable rows remain
-unresolved and two rows are typed as unbatchable, not because a legacy
-extraction block failed. All planned rows are partitioned and accounted for.
+## What the exported tiers mean
 
-The bounded resume that completed the two missing legacy blocks made six new
-structured invocations, all on the open-development corpus, for a reported cost
-of `$0.1855958`. All 378 already successful legacy blocks and all 120 row
-batches were reused. The public JSON reports artifact-basis usage separately:
-155 retained call records and a `$1.30342832` lower-bound cost, comprising the
-six new legacy calls plus 149 restored row-call records. It is not a complete
-cross-invocation billing ledger.
+| Record-level tier or basis | Records |
+| --- | ---: |
+| `model_reviewed` tier | 313 |
+| `deterministic` tier | 4 |
+| `human_confirmed` tier | 0 |
+| `model_reviewed_origin_quote` basis | 10 |
 
-Regenerate the public projection offline with:
+The origin-basis row overlaps the tier rows; it is not a fourth review tier.
+A model-reviewed origin quote was checked against the page. It is not a human
+attestation of producer origin. The remaining records carry weaker origin bases.
 
-```bash
-uv run ere build-public-development-summary runs/my-development-run \
-  --output results/current-development-summary.json
-```
+The census route uses a separate page-scoped model reviewer and offline
+recomposition. It is distinct from the detailed tuple → independent verifier →
+origin model chain available elsewhere in the code. The census model-reviewed path
+can retain unresolved referential and field-provenance checks in exported metadata.
+It therefore does not establish that every canonical non-origin gate passed.
 
-The command is deliberately incompatible with the legacy run shape and refuses
-holdout or unclassified corpus bindings, internally inconsistent row ledgers,
-and canonical exports without positive `PAPER_PRODUCED` origin. A run with
-typed unbatchable rows is reported as bounded partial completion; those rows
-are not silently counted as resolved.
+All 105 saved paper runs requested `google/gemini-3.5-flash-lite` for extraction;
+the separate reviewer requested the same model identifier. The tuple, independent
+verifier, and origin-retrieval model stages were disabled in those paper runs.
 
-The next scientific measurement is an independently annotated, predeclared
-sample with result rows, externally sourced results, setup and sample-count
-rows, parameter rows, headings, and uncertain or mixed rows. The completed
-single-annotator exploratory audit is not independent validation and is not
-included in the public aggregate.
+`positive_only` remains the default canonical policy. The `tiered` policy makes
+weaker evidence bases visible in every record and does not label them
+`paper_produced`. Schema validity checks the output structure. It does not establish
+that a tuple was interpreted correctly or that the current paper generated its score.
+
+## Evidence that exists
+
+- Saved run artifacts establish processed-paper, candidate, support, and export
+  counts for the dated snapshot.
+- Offline deterministic tests exercise contracts for source freezing, evidence
+  binding, model-stage orchestration, conflicts, composition, review, and integrity.
+- A synthetic offline demo exercises the sealed reviewed-export workflow and yields
+  schema-valid EEE with a fixed synthetic attestation.
+- A 150-item packet exists for human assessment of sampled candidate/model-review
+  outcomes. Its labels are still unfilled in the saved state.
+
+Test success and synthetic execution are implementation evidence. The model-review
+outputs are model assessments. Neither supplies missing human quality labels.
+
+## Claims that remain unavailable
+
+No current result establishes:
+
+- Precision of all extracted candidates or all tiered EEE observations.
+- Complete-tuple correctness, including system, dataset, metric, value, and scope.
+- The error rate of the current `model_reviewed` tier.
+- Producer-origin accuracy or an automatic promotion rule suitable for canonical EEE.
+- Whole-paper recall, including results outside selected pages and missed candidates.
+- Independent current-version performance on unseen papers.
+- Human inter-annotator agreement or an adjudicated reference standard for the census.
+
+Earlier pilot measurements used different runs and limited target sets. They must
+not be carried forward as current census accuracy or as whole-paper recall.
+
+## Immediate measurement
+
+Use the [annotation guide](annotation-guide.md) to review the prepared 150 items
+against the source. Preserve the frozen candidate tuple and record `correct`,
+`incorrect`, or `cannot_tell`, with concise reasons where needed.
+
+Score accepted and non-accepted model-decision strata with their declared
+denominators. An intentionally stratified sample is not automatically representative
+of the whole corpus. Report unresolved labels explicitly. Inspect the actual errors
+before interpreting a single overall rate.
+
+These labels evaluate sampled candidates and reviewer behavior. They do not change
+EEE records, establish whole-paper recall, or supply all evidence required by the
+separate sealed human-reviewed export protocol.
+
+The next independent evaluation should define the target population, sampling,
+annotation instructions, error categories, and treatment of disagreement before
+reserved papers are opened. After the current annotation results are understood,
+choose whether to prioritize extraction errors, topic relevance, identity resolution,
+producer origin, or further corpus processing.

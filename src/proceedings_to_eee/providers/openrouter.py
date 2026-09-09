@@ -4,47 +4,130 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import random
 import time
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Literal
 
 import httpx
 from jsonschema import ValidationError, validate
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ProviderValidationCode = Literal["invalid_json", "schema_validation", "wire_validation"]
+CompletionTokenParameter = Literal["max_tokens", "max_completion_tokens"]
+
+# OpenRouter's response-side provider label is untrusted text.  Public artifacts may
+# retain only this deliberately frozen vocabulary; anything else is represented by a
+# bounded disposition and omitted.  Keep this set independent of the live catalogue so
+# rebuilding an artifact cannot silently change its disclosure boundary.
+PUBLIC_PROVIDER_LABELS: frozenset[str] = frozenset(
+    {
+        "Amazon Bedrock",
+        "Anthropic",
+        "Azure",
+        "Cerebras",
+        "Chutes",
+        "Cloudflare",
+        "DeepInfra",
+        "Fireworks",
+        "Google",
+        "Google AI Studio",
+        "Groq",
+        "Hyperbolic",
+        "Lambda",
+        "Lepton",
+        "Mistral",
+        "Nebius",
+        "NVIDIA",
+        "Novita",
+        "OpenAI",
+        "SambaNova",
+        "Together",
+        "xAI",
+    }
+)
+
+
+class ProviderPayloadValidationKeyword(StrEnum):
+    """Stable, payload-blind diagnostics for invalid structured responses."""
+
+    OUTER_ENVELOPE_INVALID_JSON = "outer_envelope_invalid_json"
+    OUTER_ENVELOPE_NON_OBJECT = "outer_envelope_non_object"
+    OUTER_ENVELOPE_MALFORMED = "outer_envelope_malformed"
+    STRUCTURED_CONTENT_REFUSAL = "structured_content_refusal"
+    STRUCTURED_CONTENT_MISSING = "structured_content_missing"
+    STRUCTURED_CONTENT_NULL = "structured_content_null"
+    STRUCTURED_CONTENT_MALFORMED_LIST = "structured_content_malformed_list"
+    STRUCTURED_CONTENT_INVALID_JSON = "structured_content_invalid_json"
+    STRUCTURED_CONTENT_NON_OBJECT = "structured_content_non_object"
+
+
+def completion_token_parameter_for_model(model: str) -> CompletionTokenParameter:
+    """Return the OpenRouter token-limit field supported by the model family.
+
+    OpenRouter's ZDR endpoint catalogue advertises OpenAI endpoints with
+    ``max_completion_tokens`` rather than the legacy ``max_tokens`` field.
+    With ``require_parameters=true``, sending the legacy field makes an
+    otherwise compatible OpenAI route ineligible.  The mapping is derived from
+    the exact persisted model ID, so call metadata plus the bound code version
+    reconstructs the wire request without mutable catalogue state.
+    """
+
+    normalized = model.strip().removeprefix("~")
+    if not normalized or "/" not in normalized:
+        raise ValueError("OpenRouter model must be a non-empty author/model ID")
+    author, _, slug = normalized.partition("/")
+    if not author or not slug:
+        raise ValueError("OpenRouter model must be a non-empty author/model ID")
+    return "max_completion_tokens" if author.casefold() == "openai" else "max_tokens"
+
+
+REASONING_DISABLED = "none"
+"""`reasoning_effort` value that turns provider reasoning off instead of lowering it."""
 
 
 class ProviderCall(BaseModel):
     """Secret-free metadata for one provider request."""
 
     model_config = ConfigDict(extra="forbid")
-    provider: str = "openrouter"
-    model_requested: str
+    provider: Literal["openrouter"] = "openrouter"
+    model_requested: str = Field(pattern=r"^~?[^/\s]+/[^/\s]+$", strict=True)
     model_returned: str | None = None
     provider_returned: str | None = None
-    prompt_sha256: str
-    response_sha256: str
-    temperature: float | None
-    reasoning_effort: str | None = None
-    max_tokens: int
-    seed: int | None
+    prompt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    response_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    temperature: float | None = Field(allow_inf_nan=False, strict=True)
+    reasoning_effort: str | None = Field(default=None, min_length=1, strict=True)
+    max_tokens: int = Field(ge=1, strict=True)
+    completion_token_parameter: CompletionTokenParameter
+    seed: int | None = Field(ge=0, strict=True)
     response_format: Literal["json_schema"] = "json_schema"
-    schema_name: str
+    schema_name: str = Field(pattern=r"^[A-Za-z0-9_-]+$", min_length=1, strict=True)
     schema_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     schema_strict: Literal[True] = True
     data_collection: Literal["allow", "deny"] = "deny"
-    require_parameters: bool = False
-    zdr: bool = True
-    latency_seconds: float
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-    total_tokens: int | None = None
-    cost_usd: float | None = None
+    require_parameters: bool = Field(default=False, strict=True)
+    zdr: bool = Field(default=True, strict=True)
+    latency_seconds: float = Field(ge=0, allow_inf_nan=False, strict=True)
+    input_tokens: int | None = Field(default=None, ge=0, strict=True)
+    output_tokens: int | None = Field(default=None, ge=0, strict=True)
+    reasoning_tokens: int | None = Field(default=None, ge=0, strict=True)
+    total_tokens: int | None = Field(default=None, ge=0, strict=True)
+    cost_usd: float | None = Field(default=None, ge=0, allow_inf_nan=False, strict=True)
     request_id: str | None = None
     finish_reason: str | None = None
-    attempts: int = Field(ge=1)
+    attempts: int = Field(ge=1, strict=True)
+
+    @model_validator(mode="after")
+    def _validate_completion_token_parameter(self) -> ProviderCall:
+        """Reject telemetry whose persisted wire field disagrees with its model."""
+
+        expected = completion_token_parameter_for_model(self.model_requested)
+        if self.completion_token_parameter != expected:
+            raise ValueError("completion_token_parameter does not match model_requested")
+        return self
 
 
 class ProviderResponseValidationError(ValueError):
@@ -55,6 +138,8 @@ class ProviderResponseValidationError(ValueError):
         *,
         call: ProviderCall,
         code: ProviderValidationCode = "schema_validation",
+        validation_path: tuple[str | int, ...] = (),
+        validation_keyword: str | None = None,
     ) -> None:
         messages = {
             "invalid_json": "OpenRouter response did not contain valid structured JSON",
@@ -64,6 +149,8 @@ class ProviderResponseValidationError(ValueError):
         super().__init__(messages[code])
         self.call = call
         self.code = code
+        self.validation_path = validation_path
+        self.validation_keyword = validation_keyword
 
 
 class ProviderRequestRejectedError(RuntimeError):
@@ -78,6 +165,23 @@ class ProviderRequestRejectedError(RuntimeError):
 class StructuredResponse:
     payload: dict[str, Any]
     call: ProviderCall
+
+
+def require_exact_returned_model(
+    response: StructuredResponse,
+    *,
+    requested_model: str,
+) -> StructuredResponse:
+    """Reject a completed response routed to any model other than the exact request."""
+
+    if response.call.model_returned != requested_model:
+        raise ProviderResponseValidationError(
+            call=response.call,
+            code="wire_validation",
+            validation_path=("model",),
+            validation_keyword="returned_model_mismatch",
+        )
+    return response
 
 
 def openrouter_structural_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -153,9 +257,23 @@ def _request_contract(
     schema_strict: Literal[True],
     seed: int | None,
     require_parameters: bool,
+    max_tokens: int | None = None,
+    completion_token_parameter: CompletionTokenParameter | None = None,
 ) -> dict[str, Any]:
-    return {
-        "schema_version": "provider-request-contract/0.1",
+    token_fields_bound = max_tokens is not None or completion_token_parameter is not None
+    if token_fields_bound and (
+        isinstance(max_tokens, bool)
+        or not isinstance(max_tokens, int)
+        or max_tokens < 1
+        or completion_token_parameter not in {"max_tokens", "max_completion_tokens"}
+    ):
+        raise ValueError("max_tokens and completion_token_parameter must be bound together")
+    contract: dict[str, Any] = {
+        "schema_version": (
+            "provider-request-contract/0.2"
+            if token_fields_bound
+            else "provider-request-contract/0.1"
+        ),
         "privacy": {
             "data_collection": data_collection,
             "zdr": zdr,
@@ -169,6 +287,10 @@ def _request_contract(
         },
         "seed": seed,
     }
+    if token_fields_bound:
+        contract["max_tokens"] = max_tokens
+        contract["completion_token_parameter"] = completion_token_parameter
+    return contract
 
 
 def structured_request_contract(
@@ -177,8 +299,22 @@ def structured_request_contract(
     schema: dict[str, Any],
     seed: int | None,
     require_parameters: bool = False,
+    model: str | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
-    """Build the versioned, secret-free contract before any provider call."""
+    """Build a versioned, secret-free schema or materialized request contract.
+
+    Call-independent schema helpers may omit both ``model`` and ``max_tokens``
+    and retain the 0.1 contract.  Actual provider dispatch and budget
+    reservation paths must provide both; their 0.2 contract binds the logical
+    limit to the exact model-specific OpenRouter wire parameter.
+    """
+
+    if (model is None) != (max_tokens is None):
+        raise ValueError("model and max_tokens must be provided together")
+    completion_token_parameter = (
+        None if model is None else completion_token_parameter_for_model(model)
+    )
 
     provider_schema = openrouter_structural_schema(schema)
     schema_bytes = json.dumps(
@@ -196,12 +332,17 @@ def structured_request_contract(
         schema_strict=True,
         seed=seed,
         require_parameters=require_parameters,
+        max_tokens=max_tokens,
+        completion_token_parameter=completion_token_parameter,
     )
 
 
 def structured_request_contract_from_call(call: ProviderCall) -> dict[str, Any]:
     """Reconstruct a request contract from completed-call telemetry."""
 
+    expected_parameter = completion_token_parameter_for_model(call.model_requested)
+    if call.completion_token_parameter != expected_parameter:
+        raise ValueError("provider call completion-token materialization is invalid")
     return _request_contract(
         data_collection=call.data_collection,
         zdr=call.zdr,
@@ -211,7 +352,85 @@ def structured_request_contract_from_call(call: ProviderCall) -> dict[str, Any]:
         schema_strict=call.schema_strict,
         seed=call.seed,
         require_parameters=call.require_parameters,
+        max_tokens=call.max_tokens,
+        completion_token_parameter=call.completion_token_parameter,
     )
+
+
+def public_provider_call(call: ProviderCall) -> dict[str, Any]:
+    """Project one completed call into the sole public telemetry representation.
+
+    Request IDs are operational correlators and are never published, including as a
+    stable digest.  Response-side model, provider, and finish metadata are untrusted:
+    only an exact requested-model echo and frozen provider labels survive, while all
+    other values collapse to bounded dispositions/categories.
+    """
+
+    if not isinstance(call, ProviderCall):
+        raise TypeError("public provider-call projection requires typed ProviderCall")
+    if call.provider != "openrouter":
+        raise ValueError("public provider-call projection supports only openrouter")
+
+    if call.model_returned is None:
+        model_returned = None
+        model_returned_disposition = "missing"
+    elif call.model_returned == call.model_requested:
+        model_returned = call.model_returned
+        model_returned_disposition = "matches_requested"
+    else:
+        model_returned = None
+        model_returned_disposition = "unrecognized_omitted"
+
+    if call.provider_returned is None:
+        provider_returned = None
+        provider_returned_disposition = "missing"
+    elif call.provider_returned in PUBLIC_PROVIDER_LABELS:
+        provider_returned = call.provider_returned
+        provider_returned_disposition = "known_label"
+    else:
+        provider_returned = None
+        provider_returned_disposition = "unrecognized_omitted"
+
+    finish_category = (
+        "missing"
+        if call.finish_reason is None
+        else call.finish_reason
+        if call.finish_reason in {"stop", "length", "error"}
+        else "other"
+    )
+    return {
+        "schema_version": "public-provider-call/0.1",
+        "provider_requested": "openrouter",
+        "model_requested": call.model_requested,
+        "model_returned": model_returned,
+        "model_returned_disposition": model_returned_disposition,
+        "provider_returned": provider_returned,
+        "provider_returned_disposition": provider_returned_disposition,
+        "prompt_sha256": call.prompt_sha256,
+        "response_sha256": call.response_sha256,
+        "temperature": call.temperature,
+        "reasoning_effort": call.reasoning_effort,
+        "max_tokens": call.max_tokens,
+        "completion_token_parameter": call.completion_token_parameter,
+        "seed": call.seed,
+        "response_format": call.response_format,
+        "schema_name": call.schema_name,
+        "schema_sha256": call.schema_sha256,
+        "schema_strict": call.schema_strict,
+        "request_contract": structured_request_contract_from_call(call),
+        "data_collection": call.data_collection,
+        "require_parameters": call.require_parameters,
+        "zdr": call.zdr,
+        "latency_seconds": call.latency_seconds,
+        "input_tokens": call.input_tokens,
+        "output_tokens": call.output_tokens,
+        "reasoning_tokens": call.reasoning_tokens,
+        "total_tokens": call.total_tokens,
+        "cost_usd": call.cost_usd,
+        "finish_category": finish_category,
+        "attempts": call.attempts,
+        "request_id_observed": call.request_id is not None,
+    }
 
 
 class OpenRouterClient:
@@ -254,11 +473,14 @@ class OpenRouterClient:
             self._require_parameters if require_parameters is None else require_parameters
         )
         provider_schema = openrouter_structural_schema(schema)
+        completion_token_parameter = completion_token_parameter_for_model(model)
         contract = structured_request_contract(
             schema_name=schema_name,
             schema=schema,
             seed=seed,
             require_parameters=effective_require_parameters,
+            model=model,
+            max_tokens=max_tokens,
         )
         privacy_contract = contract["privacy"]
         routing_contract = contract["routing"]
@@ -271,7 +493,6 @@ class OpenRouterClient:
         body: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "max_tokens": max_tokens,
             "response_format": {
                 "type": schema_contract["response_format"],
                 "json_schema": {
@@ -286,16 +507,21 @@ class OpenRouterClient:
                 "zdr": privacy_contract["zdr"],
             },
         }
+        body[completion_token_parameter] = max_tokens
         if temperature is not None:
             body["temperature"] = temperature
-        if reasoning_effort is not None:
+        if reasoning_effort == REASONING_DISABLED:
+            # Requesting minimal reasoning effort does not disable reasoning. Use the
+            # explicit switch when the caller requests no reasoning.
+            body["reasoning"] = {"enabled": False, "exclude": True}
+        elif reasoning_effort is not None:
             body["reasoning"] = {"effort": reasoning_effort, "exclude": True}
         if contract["seed"] is not None:
             body["seed"] = contract["seed"]
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/evaleval/proceedings-to-eee",
+            "HTTP-Referer": "https://github.com/evaleval/proceedings-to-paper",
             "X-Title": "Proceedings to EEE",
         }
         started = time.monotonic()
@@ -336,16 +562,48 @@ class OpenRouterClient:
             usage = safe_envelope.get("usage") or {}
             if not isinstance(usage, dict):
                 usage = {}
+            completion_details = usage.get("completion_tokens_details") or {}
+            if not isinstance(completion_details, dict):
+                completion_details = {}
+
+            def optional_nonnegative_int(value: Any) -> int | None:
+                if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                    return None
+                return value
+
+            def optional_nonnegative_number(value: Any) -> float | None:
+                if isinstance(value, bool) or not isinstance(value, int | float):
+                    return None
+                try:
+                    parsed = float(value)
+                except OverflowError:
+                    return None
+                return parsed if parsed >= 0 and math.isfinite(parsed) else None
+
+            reasoning_tokens = optional_nonnegative_int(completion_details.get("reasoning_tokens"))
             safe_choice = choice or {}
+            model_returned = safe_envelope.get("model")
+            if not isinstance(model_returned, str):
+                model_returned = None
+            provider_returned = safe_envelope.get("provider")
+            if not isinstance(provider_returned, str):
+                provider_returned = None
+            finish_reason = safe_choice.get("finish_reason")
+            if not isinstance(finish_reason, str):
+                finish_reason = None
+            request_id = response.headers.get("x-request-id") or safe_envelope.get("id")
+            if not isinstance(request_id, str):
+                request_id = None
             return ProviderCall(
                 model_requested=model,
-                model_returned=safe_envelope.get("model"),
-                provider_returned=safe_envelope.get("provider"),
+                model_returned=model_returned,
+                provider_returned=provider_returned,
                 prompt_sha256=hashlib.sha256(prompt_bytes).hexdigest(),
                 response_sha256=hashlib.sha256(response_bytes).hexdigest(),
                 temperature=temperature,
                 reasoning_effort=reasoning_effort,
                 max_tokens=max_tokens,
+                completion_token_parameter=completion_token_parameter,
                 seed=contract["seed"],
                 response_format=schema_contract["response_format"],
                 schema_name=schema_contract["schema_name"],
@@ -355,12 +613,13 @@ class OpenRouterClient:
                 require_parameters=routing_contract["require_parameters"],
                 zdr=privacy_contract["zdr"],
                 latency_seconds=round(time.monotonic() - started, 6),
-                input_tokens=usage.get("prompt_tokens"),
-                output_tokens=usage.get("completion_tokens"),
-                total_tokens=usage.get("total_tokens"),
-                cost_usd=usage.get("cost"),
-                request_id=response.headers.get("x-request-id") or safe_envelope.get("id"),
-                finish_reason=safe_choice.get("finish_reason"),
+                input_tokens=optional_nonnegative_int(usage.get("prompt_tokens")),
+                output_tokens=optional_nonnegative_int(usage.get("completion_tokens")),
+                reasoning_tokens=reasoning_tokens,
+                total_tokens=optional_nonnegative_int(usage.get("total_tokens")),
+                cost_usd=optional_nonnegative_number(usage.get("cost")),
+                request_id=request_id,
+                finish_reason=finish_reason,
                 attempts=attempt,
             )
 
@@ -368,12 +627,20 @@ class OpenRouterClient:
             envelope = response.json()
         except (json.JSONDecodeError, UnicodeDecodeError):
             call = completed_call(response_bytes=response.content)
-            raise ProviderResponseValidationError(call=call, code="invalid_json") from None
+            raise ProviderResponseValidationError(
+                call=call,
+                code="invalid_json",
+                validation_keyword=ProviderPayloadValidationKeyword.OUTER_ENVELOPE_INVALID_JSON,
+            ) from None
         if not isinstance(envelope, dict):
             call = completed_call(response_bytes=response.content)
-            raise ProviderResponseValidationError(call=call, code="invalid_json") from None
+            raise ProviderResponseValidationError(
+                call=call,
+                code="invalid_json",
+                validation_keyword=ProviderPayloadValidationKeyword.OUTER_ENVELOPE_NON_OBJECT,
+            ) from None
         choice: dict[str, Any] | None = None
-        content: Any = envelope
+        content: Any = None
         try:
             choice = envelope["choices"][0]
             if not isinstance(choice, dict):
@@ -381,24 +648,99 @@ class OpenRouterClient:
             message = choice["message"]
             if not isinstance(message, dict):
                 raise TypeError("message is not an object")
-            if message.get("refusal"):
-                safe_refusal = str(message["refusal"]).replace(self._api_key, "[REDACTED]")
-                raise ValueError(f"model refused structured extraction: {safe_refusal}")
-            content = message["content"]
-            if isinstance(content, list):
-                content = "".join(
-                    item.get("text", "") for item in content if isinstance(item, dict)
-                )
-            payload = json.loads(content) if isinstance(content, str) else content
-            if not isinstance(payload, dict):
-                raise TypeError("structured response is not a JSON object")
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+        except (KeyError, IndexError, TypeError):
             call = completed_call(
-                response_bytes=_fingerprint_bytes(content, fallback=response.content),
+                response_bytes=response.content,
                 envelope=envelope,
                 choice=choice,
             )
-            raise ProviderResponseValidationError(call=call, code="invalid_json") from None
+            raise ProviderResponseValidationError(
+                call=call,
+                code="invalid_json",
+                validation_keyword=ProviderPayloadValidationKeyword.OUTER_ENVELOPE_MALFORMED,
+            ) from None
+        if message.get("refusal"):
+            call = completed_call(
+                response_bytes=response.content,
+                envelope=envelope,
+                choice=choice,
+            )
+            raise ProviderResponseValidationError(
+                call=call,
+                code="invalid_json",
+                validation_keyword=ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_REFUSAL,
+            )
+        if "content" not in message:
+            call = completed_call(
+                response_bytes=response.content,
+                envelope=envelope,
+                choice=choice,
+            )
+            raise ProviderResponseValidationError(
+                call=call,
+                code="invalid_json",
+                validation_keyword=ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_MISSING,
+            )
+        content = message["content"]
+        if content is None:
+            call = completed_call(
+                response_bytes=b"null",
+                envelope=envelope,
+                choice=choice,
+            )
+            raise ProviderResponseValidationError(
+                call=call,
+                code="invalid_json",
+                validation_keyword=ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_NULL,
+            )
+        if isinstance(content, list):
+            if not content or any(
+                not isinstance(item, dict) or not isinstance(item.get("text"), str)
+                for item in content
+            ):
+                call = completed_call(
+                    response_bytes=_fingerprint_bytes(content, fallback=response.content),
+                    envelope=envelope,
+                    choice=choice,
+                )
+                raise ProviderResponseValidationError(
+                    call=call,
+                    code="invalid_json",
+                    validation_keyword=(
+                        ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_MALFORMED_LIST
+                    ),
+                )
+            fragments = [item["text"] for item in content]
+            content = "".join(fragments)
+        if isinstance(content, str):
+            try:
+                payload = json.loads(content)
+            except json.JSONDecodeError:
+                call = completed_call(
+                    response_bytes=content.encode("utf-8"),
+                    envelope=envelope,
+                    choice=choice,
+                )
+                raise ProviderResponseValidationError(
+                    call=call,
+                    code="invalid_json",
+                    validation_keyword=(
+                        ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_INVALID_JSON
+                    ),
+                ) from None
+        else:
+            payload = content
+        if not isinstance(payload, dict):
+            call = completed_call(
+                response_bytes=_fingerprint_bytes(payload, fallback=response.content),
+                envelope=envelope,
+                choice=choice,
+            )
+            raise ProviderResponseValidationError(
+                call=call,
+                code="invalid_json",
+                validation_keyword=ProviderPayloadValidationKeyword.STRUCTURED_CONTENT_NON_OBJECT,
+            )
         raw_response = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
         call = completed_call(
             response_bytes=raw_response,
@@ -407,6 +749,10 @@ class OpenRouterClient:
         )
         try:
             validate(instance=payload, schema=schema)
-        except ValidationError:
-            raise ProviderResponseValidationError(call=call) from None
+        except ValidationError as error:
+            raise ProviderResponseValidationError(
+                call=call,
+                validation_path=tuple(error.absolute_path),
+                validation_keyword=(str(error.validator) if error.validator is not None else None),
+            ) from None
         return StructuredResponse(payload=payload, call=call)

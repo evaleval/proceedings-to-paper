@@ -1,0 +1,58 @@
+{
+  "schema_version": "research-status-summary/0.1",
+  "snapshot_date": "2026-09-05",
+  "classification": "historical_open_development_census_snapshot",
+  "rerun_under_this_release": false,
+  "sources": {
+    "atlas_summary_sha256": "28b0297ca528c28d3803b556745f1c9b06c1dbf9b5a262f687a1ad9245b54b6b",
+    "eee_summary_sha256": "f2b982f72ec447da5a341e7ac0b1da8b03aaaf6fe3f3248c9651570070b7957a",
+    "label_packet_sha256": "621f7520d42ae9d43a3dbb4149e26e10e01d9cd98394f1c4cd66ec72be9d8a44"
+  },
+  "population": {
+    "papers_total": 3251,
+    "papers_processed": 105,
+    "papers_with_candidates": 99,
+    "papers_unstarted": 3080,
+    "papers_reserved": 60,
+    "papers_unavailable": 3,
+    "papers_budget_stopped": 3
+  },
+  "candidates": {
+    "total": 4778,
+    "text_supported": 4202
+  },
+  "eee": {
+    "schema_version": "0.2.2",
+    "schema_sha256": "088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
+    "origin_policy": "tiered",
+    "records": 317,
+    "schema_invalid_records": 0,
+    "papers_with_records": 56,
+    "atomic_observations": 1192,
+    "canonical_records_reported": 0,
+    "records_by_tier": {
+      "deterministic": 4,
+      "model_reviewed": 313,
+      "human_confirmed": 0
+    },
+    "records_by_producer_origin_basis": {
+      "model_asserted_primary_no_external_cue": 231,
+      "model_asserted_primary_unchecked": 76,
+      "model_reviewed_origin_quote": 10
+    }
+  },
+  "human_annotation": {
+    "packet_items": 150,
+    "labels_filled": 0,
+    "independent_validation_available": false
+  },
+  "limitations": [
+    "Counts describe a stored development run, not a fresh run of this release.",
+    "Textual support and schema validity do not establish semantic correctness.",
+    "Tiered export is weaker than canonical export. The model-reviewed path may retain failed referential or field-provenance checks.",
+    "Reviewer error rate, current precision, whole-paper recall and generalization remain unmeasured.",
+    "The annotation sample evaluates candidate tuple correctness, not producer origin or final exported-record accuracy.",
+    "Selection covers at most eight result-bearing pages per paper.",
+    "Source artifacts and the annotation packet are private; only aggregate counts and binding hashes are included."
+  ]
+}

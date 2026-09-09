@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from proceedings_to_eee.domain.observation import CandidateObservation, EvidenceAnchor
@@ -45,18 +45,22 @@ class PhysicalCellIdentity:
     source_id: str
     page: int
     page_text_sha256: str
-    region_id: str
-    table_start_line: int
-    table_end_line: int
-    table_column_start: int | None
-    table_column_end: int | None
-    row_line: int
-    row_ordinal: int
-    row_label: str | None
-    value_ordinal: int
-    value_column_start: int
-    value_column_end: int
-    raw: str
+    region_id: str | None = None
+    table_start_line: int | None = None
+    table_end_line: int | None = None
+    table_column_start: int | None = None
+    table_column_end: int | None = None
+    row_line: int | None = None
+    row_ordinal: int | None = None
+    row_label: str | None = None
+    value_ordinal: int | None = None
+    value_column_start: int | None = None
+    value_column_end: int | None = None
+    raw: str | None = None
+    planned_row_id: str | None = field(default=None, compare=False)
+    physical_cell_id: str | None = field(default=None, compare=False)
+    numeric_token_id: str | None = field(default=None, compare=False)
+    header_ids: tuple[str, ...] = field(default=(), compare=False)
 
 
 @dataclass(frozen=True)
@@ -287,6 +291,86 @@ class PhysicalCellLocator:
             return PhysicalCellBinding(
                 PhysicalCellBindingStatus.UNLOCATED,
                 reason="candidate has no reported value",
+            )
+
+        table_anchors = [
+            anchor for anchor in candidate.evidence if anchor.kind is EvidenceKind.TABLE
+        ]
+        exact = [
+            anchor
+            for anchor in table_anchors
+            if anchor.planned_row_id is not None
+            and anchor.cell_id is not None
+            and anchor.numeric_token_id is not None
+        ]
+        if exact:
+            if len(exact) != len(table_anchors):
+                return PhysicalCellBinding(
+                    PhysicalCellBindingStatus.AMBIGUOUS,
+                    reason="candidate mixes exact and unbound table anchors",
+                )
+            identities = {
+                (
+                    anchor.source_id,
+                    anchor.page,
+                    anchor.region_id,
+                    anchor.planned_row_id,
+                    anchor.cell_id,
+                    anchor.numeric_token_id,
+                    tuple(anchor.header_ids),
+                )
+                for anchor in exact
+            }
+            if len(identities) != 1:
+                return PhysicalCellBinding(
+                    PhysicalCellBindingStatus.AMBIGUOUS,
+                    reason="exact table anchors disagree on physical cell or numeric token",
+                )
+            exact_identity = identities.pop()
+            source_id, page_number = exact_identity[:2]
+            page = self._pages.get(source_id, {}).get(page_number)
+            if page is None:
+                return PhysicalCellBinding(
+                    PhysicalCellBindingStatus.UNLOCATED,
+                    reason="exact table anchor source page is unavailable",
+                )
+            index = self._index(source_id)
+            page_index = index.get(page_number) if index is not None else None
+            if page_index is not None:
+                results = [
+                    _bind_anchor(
+                        paper_id=candidate.paper_id,
+                        raw_value=candidate.value.raw,
+                        anchor=anchor,
+                        page=page,
+                        index=page_index,
+                    )
+                    for anchor in exact
+                ]
+                ambiguous = next(
+                    (
+                        result
+                        for result in results
+                        if result.status is PhysicalCellBindingStatus.AMBIGUOUS
+                    ),
+                    None,
+                )
+                if ambiguous is not None:
+                    return ambiguous
+                structural = {
+                    result.identity
+                    for result in results
+                    if result.status is PhysicalCellBindingStatus.BOUND
+                    and result.identity is not None
+                }
+                if len(structural) == 1:
+                    return PhysicalCellBinding(
+                        PhysicalCellBindingStatus.BOUND,
+                        identity=structural.pop(),
+                    )
+            return PhysicalCellBinding(
+                PhysicalCellBindingStatus.UNLOCATED,
+                reason="claimed exact table identity was not resolved from frozen layout",
             )
 
         bound: set[PhysicalCellIdentity] = set()
