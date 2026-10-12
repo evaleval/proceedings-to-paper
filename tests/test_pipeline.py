@@ -92,8 +92,8 @@ def _paper(paper_id: str) -> PaperSpec:
 def _settings(tmp_path: Path) -> PipelineSettings:
     return PipelineSettings(
         project_root=tmp_path,
-        schema_path=PROJECT_ROOT / "schemas" / "eee-0.2.2" / "eval.schema.json",
-        schema_sha256="088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
+        schema_path=PROJECT_ROOT / "schemas" / "eee-0.3.0" / "eval.schema.json",
+        schema_sha256="c9c6195aec8a9dfa0b2aba4924ac1aa8a184c9d8ca97cee778cb531088e39b48",
         output_root=tmp_path / "runs",
         model="fixture/extractor",
     )
@@ -179,7 +179,7 @@ def test_bounded_paper_manifest_persists_candidate_validation_policy(tmp_path: P
     summary = _bounded_paper_summary(
         paper=_paper("bounded"),
         settings=settings,
-        schema_version="0.2.2",
+        schema_version="0.3.0",
         schema_sha256="a" * 64,
         code_state={"git_commit": "uncommitted", "git_dirty": False, "git_available": False},
         block_config={"max_blocks_per_page": 6},
@@ -191,6 +191,57 @@ def test_bounded_paper_manifest_persists_candidate_validation_policy(tmp_path: P
         "schema_version": "candidate-validation/0.2",
         "min_confidence": 0.61,
         "origin_policy": "positive_only",
+    }
+
+
+def test_bounded_paper_manifest_reports_page_selection_only_when_recorded(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    paper = _paper("bounded")
+    error = ProviderBudgetExhausted(reason="cost_limit", summary={})
+    telemetry_keys = (
+        "page_count",
+        "pages_selected",
+        "blocks_dropped_in_references",
+        "tables_chunked",
+    )
+
+    def bounded() -> dict[str, Any]:
+        return _bounded_paper_summary(
+            paper=paper,
+            settings=settings,
+            schema_version="0.2.2",
+            schema_sha256="a" * 64,
+            code_state={"git_commit": "uncommitted", "git_dirty": False, "git_available": False},
+            block_config={"max_blocks_per_page": None},
+            error=error,
+            started=0.0,
+        )
+
+    before = bounded()
+    assert {key: before[key] for key in telemetry_keys} == dict.fromkeys(telemetry_keys)
+    assert before["extractor"]["execution"]["calls_finish_length"] == 0
+
+    write_json(
+        settings.output_root / paper.paper_id / "private" / "page-selection.json",
+        {
+            "schema_version": "page-selection/0.1",
+            "page_count": 9,
+            "pages_selected": 9,
+            "blocks_total": 40,
+            "blocks_dropped_in_references": 3,
+            "tables_chunked": 2,
+            "selected_pages": list(range(1, 10)),
+            "pages": [],
+        },
+    )
+    after = bounded()
+    assert {key: after[key] for key in telemetry_keys} == {
+        "page_count": 9,
+        "pages_selected": 9,
+        "blocks_dropped_in_references": 3,
+        "tables_chunked": 2,
     }
 
 
@@ -424,8 +475,8 @@ def test_run_corpus_aggregates_errors_without_aborting(monkeypatch, tmp_path: Pa
     assert failed_run["verifier"]["require_parameters"] is True
     assert failed_run["verifier"]["request_contract"] == verifier_request_contract()
     assert failed_run["eee_schema"] == {
-        "version": "0.2.2",
-        "sha256": "088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
+        "version": "0.3.0",
+        "sha256": "c9c6195aec8a9dfa0b2aba4924ac1aa8a184c9d8ca97cee778cb531088e39b48",
     }
     assert failed_run["extractor"]["execution"]["blocks_total"] == 0
     card = build_paper_extraction_review_card(
@@ -1033,8 +1084,8 @@ System B (Dataset A AUC)  0.70
     )
     settings = PipelineSettings(
         project_root=tmp_path,
-        schema_path=PROJECT_ROOT / "schemas" / "eee-0.2.2" / "eval.schema.json",
-        schema_sha256="088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
+        schema_path=PROJECT_ROOT / "schemas" / "eee-0.3.0" / "eval.schema.json",
+        schema_sha256="c9c6195aec8a9dfa0b2aba4924ac1aa8a184c9d8ca97cee778cb531088e39b48",
         output_root=output_root,
         model="fixture/model",
         seed=19,
@@ -1152,21 +1203,31 @@ def test_run_paper_with_explicit_trusted_origin_writes_valid_eee_and_reference_s
     record = json.loads(eee_files[0].read_text())
     assert record["evaluation_results"][0]["score_details"]["score"] == 0.8
     assert result["result_block_segmentation"] == {
-        "max_lines": 40,
+        "max_lines": 60,
         "max_characters": 6_000,
         "context_lines": 8,
         "trailing_context_lines": 2,
         "overlap_lines": 3,
         "signal_gap_lines": 3,
         "max_blank_gap": 1,
-        "max_data_rows": 6,
+        "max_data_rows": 14,
+        "max_numeric_cells": 24,
         "min_signal_score": 1.5,
-        "max_blocks_per_page": 6,
+        "max_blocks_per_page": None,
         "detect_parallel_columns": True,
         "min_column_gutter_width": 3,
         "min_parallel_lines": 4,
         "max_column_analysis_width": 240,
+        "caption_distance_lines": 12,
     }
+    assert result["page_count"] == 1
+    assert result["pages_selected"] == 1
+    assert result["blocks_dropped_in_references"] == 0
+    assert result["tables_chunked"] == 0
+    assert result["extractor"]["execution"]["calls_finish_length"] == 0
+    assert read_json(output_root / paper_id / "private" / "page-selection.json")["pages"] == [
+        {"page": 1, "blocks": 1, "blocks_dropped_in_references": 0}
+    ]
     assert (output_root / paper_id / "reference-score.json").exists()
     assert (output_root / paper_id / "review.html").exists()
 
@@ -1871,6 +1932,9 @@ def test_successful_blocks_resume_from_contract_bound_private_checkpoint(
         "calls_resumed": 0,
         "calls_resumed_succeeded": 0,
         "calls_resumed_failed": 0,
+        "calls_finish_length": 0,
+        "sparse_retries": 0,
+        "sparse_retries_kept": 0,
         "no_call_failures": 0,
         "requests_rejected": 0,
         "transport_failures": 0,
@@ -1904,6 +1968,9 @@ def test_successful_blocks_resume_from_contract_bound_private_checkpoint(
         "calls_resumed": 1,
         "calls_resumed_succeeded": 1,
         "calls_resumed_failed": 0,
+        "calls_finish_length": 0,
+        "sparse_retries": 0,
+        "sparse_retries_kept": 0,
         "no_call_failures": 0,
         "requests_rejected": 0,
         "transport_failures": 0,
@@ -1947,7 +2014,7 @@ def test_failed_block_isolated_completed_call_preserved_and_retried(
         return [blocks[0], second]
 
     monkeypatch.setattr(
-        "proceedings_to_eee.pipeline.segment_page_result_blocks",
+        "proceedings_to_eee.extraction.page_blocks.segment_page_result_blocks",
         two_blocks,
     )
     monkeypatch.setattr(
@@ -1974,6 +2041,9 @@ def test_failed_block_isolated_completed_call_preserved_and_retried(
         "calls_resumed": 0,
         "calls_resumed_succeeded": 0,
         "calls_resumed_failed": 0,
+        "calls_finish_length": 0,
+        "sparse_retries": 0,
+        "sparse_retries_kept": 0,
         "no_call_failures": 0,
         "requests_rejected": 0,
         "transport_failures": 0,
@@ -2188,7 +2258,7 @@ def test_exact_block_checkpoint_survives_unrelated_segmentation_contract_change(
 
     second = run_paper(
         spec=spec,
-        settings=replace(settings, max_blocks_per_page=settings.max_blocks_per_page - 1),
+        settings=replace(settings, max_blocks_per_page=3),
         client=_NeverCallClient(),
     )
 
@@ -2268,3 +2338,187 @@ def test_review_omits_schema_invalid_projection(monkeypatch, tmp_path: Path) -> 
     assert len(captured["validation_errors"]) == 1
     assert not list((paper_dir / "eee").glob("*.json"))
     assert (paper_dir / "private" / "invalid-eee.json").exists()
+
+
+DENSE_PAGE_TEXT = """Results
+Table 1: AUC, F1 and accuracy on Dataset A
+System        AUC    F1     Acc
+System A      0.81   0.71   0.61
+System B      0.72   0.62   0.52
+System C      0.63   0.53   0.43
+System D      0.54   0.44   0.34
+"""
+
+
+def _dense_observation(system: str, value: str) -> dict[str, Any]:
+    line = next(line for line in DENSE_PAGE_TEXT.splitlines() if line.startswith(system))
+    return {
+        "claim_type": "primary_result",
+        "roles": [
+            {
+                "role": "evaluated_system",
+                "raw_name": system,
+                "version": None,
+                "provider": None,
+                "confidence": 0.99,
+            }
+        ],
+        "scope": {
+            "dataset_raw": "Dataset A",
+            "dataset_id": None,
+            "dataset_url": None,
+            "dataset_version": None,
+            "split": None,
+            "subset": None,
+            "group": None,
+            "language": None,
+            "sample_count": None,
+            "aggregation": None,
+            "raw_scope": None,
+        },
+        "metric": {
+            "raw_name": "AUC",
+            "canonical_id": None,
+            "kind": None,
+            "unit": None,
+            "lower_is_better": None,
+            "min_score": None,
+            "max_score": None,
+            "parameters": {},
+        },
+        "value": {
+            "raw": value,
+            "numeric": float(value),
+            "unit": None,
+            "comparator": "exact",
+            "uncertainty": None,
+        },
+        "evidence": [
+            {"kind": "table", "label": "Table 1", "row": system, "column": "AUC", "quote": line}
+        ],
+        "extraction_confidence": 0.99,
+        "construct": None,
+        "operationalization": None,
+        "decision_rule": None,
+        "evaluation_date": None,
+        "notes": [],
+    }
+
+
+class _SparseThenFullClient(_EndToEndClient):
+    """Return one candidate for the dense table the first time it is asked, three the
+    second time, and nothing for any other block."""
+
+    def __init__(self, second: int = 3) -> None:
+        super().__init__()
+        self.dense_requests = 0
+        self.second = second
+
+    def structured_chat(self, **kwargs: Any) -> StructuredResponse:
+        response = super().structured_chat(**kwargs)
+        observations: list[dict[str, Any]] = []
+        if "System A      0.81" in kwargs["user"]:
+            self.dense_requests += 1
+            rows = [("System A", "0.81"), ("System B", "0.72"), ("System C", "0.63")]
+            count = 1 if self.dense_requests == 1 else self.second
+            observations = [_dense_observation(*row) for row in rows[:count]]
+        payload = {"observations": observations, "page_summary": "dense", "warnings": []}
+        call = response.call.model_copy(
+            update={
+                "response_sha256": hashlib.sha256(
+                    json.dumps(payload, sort_keys=True).encode()
+                ).hexdigest()
+            }
+        )
+        return replace(response, payload=payload, call=call)
+
+
+def _dense_fixture(monkeypatch, tmp_path: Path) -> tuple[PaperSpec, PipelineSettings]:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    layout = PdfLayout(
+        source_id="src_end_to_end",
+        parser="fixture",
+        parser_version="fixture/1",
+        page_count=1,
+        pages=[
+            PageFragment(
+                fragment_id="page-1",
+                source_id="src_end_to_end",
+                page=1,
+                text=DENSE_PAGE_TEXT,
+                text_sha256=hashlib.sha256(DENSE_PAGE_TEXT.encode()).hexdigest(),
+                character_count=len(DENSE_PAGE_TEXT),
+                numeric_token_count=12,
+                result_signal_score=10.0,
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "proceedings_to_eee.pipeline.extract_pdf_layout", lambda path, source: layout
+    )
+    return spec, settings
+
+
+def test_a_dense_table_block_that_returns_almost_nothing_is_called_once_more(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec, settings = _dense_fixture(monkeypatch, tmp_path)
+    client = _SparseThenFullClient()
+
+    result = run_paper(spec=spec, settings=settings, client=client)
+
+    assert client.dense_requests == 2
+    assert result["counts"]["candidates"] == 3
+    execution = result["extractor"]["execution"]
+    assert (execution["sparse_retries"], execution["sparse_retries_kept"]) == (1, 1)
+    (attempt,) = [item for item in result["extractor"]["block_attempts"] if "sparse_retry" in item]
+    assert attempt["status"] == "success"
+    assert attempt["sparse_retry"] == {
+        "first_candidates": 1,
+        "retry_candidates": 3,
+        "kept": "retry",
+    }
+    assert any("sparse_output_retried=1->3 kept=retry" in warning for warning in result["warnings"])
+    # Both calls count in this run's telemetry; the checkpoint keeps the kept call with
+    # the retry noted, and a resume reuses the kept candidates without a provider call.
+    assert len(result["extractor"]["calls"]) == 2
+    checkpoint = json.loads(
+        (settings.output_root / spec.paper_id / "private" / "extractor-checkpoint.json").read_text()
+    )
+    entry = checkpoint["blocks"][attempt["block_id"]]
+    assert len(entry["calls"]) == 1
+    assert entry["sparse_retry"]["kept"] == "retry"
+    assert len(entry["candidates"]) == 3
+
+    resumed = run_paper(spec=spec, settings=settings, client=_NeverCallClient())
+
+    assert resumed["counts"]["candidates"] == 3
+    assert resumed["extractor"]["execution"]["blocks_resumed"] == 1
+
+
+def test_a_retry_that_returns_no_more_keeps_the_first_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec, settings = _dense_fixture(monkeypatch, tmp_path)
+    client = _SparseThenFullClient(second=1)
+
+    result = run_paper(spec=spec, settings=settings, client=client)
+
+    assert client.dense_requests == 2
+    assert result["counts"]["candidates"] == 1
+    execution = result["extractor"]["execution"]
+    assert (execution["sparse_retries"], execution["sparse_retries_kept"]) == (1, 0)
+    (attempt,) = [item for item in result["extractor"]["block_attempts"] if "sparse_retry" in item]
+    assert attempt["sparse_retry"]["kept"] == "first"
+
+
+def test_a_sparse_block_below_the_density_bounds_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    spec, settings = _end_to_end_fixture(monkeypatch, tmp_path)
+    client = _EmptyEndToEndClient()
+
+    result = run_paper(spec=spec, settings=settings, client=client)
+
+    assert result["extractor"]["execution"]["sparse_retries"] == 0
+    assert all("sparse_retry" not in item for item in result["extractor"]["block_attempts"])

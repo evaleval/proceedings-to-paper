@@ -6,11 +6,12 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import threading
 import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from dataclasses import field as dataclass_field
@@ -51,6 +52,7 @@ from proceedings_to_eee.extraction.llm import (
     extractor_request_contract,
     row_extractor_request_contract,
 )
+from proceedings_to_eee.extraction.page_blocks import PageSegmentation, segment_result_pages
 from proceedings_to_eee.extraction.pdf_layout import (
     PageFragment,
     PdfLayout,
@@ -67,7 +69,6 @@ from proceedings_to_eee.extraction.result_blocks import (
     LEGACY_RECOVERY_MAX_DEPTH,
     ResultBlock,
     ResultBlockConfig,
-    segment_page_result_blocks,
     split_result_block,
 )
 from proceedings_to_eee.extraction.row_enumeration import (
@@ -113,6 +114,7 @@ from proceedings_to_eee.providers.openrouter import (
 from proceedings_to_eee.reference import load_reference
 from proceedings_to_eee.reporting.corpus_html import render_corpus_html_file
 from proceedings_to_eee.reporting.html import render_review_report
+from proceedings_to_eee.resolution.attribution import paper_context_from_title
 from proceedings_to_eee.resolution.origin_retrieval import (
     DEFAULT_MAX_TOKENS as DEFAULT_ORIGIN_MAX_TOKENS,
 )
@@ -215,7 +217,8 @@ class PipelineSettings:
     #: the default; the tiered policy is reached through `ere recompose-census`.
     origin_policy: OriginExportPolicy = OriginExportPolicy.POSITIVE_ONLY
     seed: int | None = EXTRACTOR_SEED
-    max_blocks_per_page: int = 6
+    #: Optional cap on result blocks per selected page; ``None`` keeps every block.
+    max_blocks_per_page: int | None = None
     row_enumeration_enabled: bool = False
     row_model: str | None = None
     row_enumeration_config: RowEnumerationConfig = dataclass_field(
@@ -269,6 +272,28 @@ class LegacyRecoveryOutcome:
 _EXTRACTOR_CHECKPOINT_SCHEMA_VERSION = "extractor-block-checkpoint/0.3"
 _EXTRACTOR_CHECKPOINT_CONTRACT_VERSION = "extractor-block-checkpoint-contract/0.3"
 _EXTRACTOR_RECOVERY_ENTRY_VERSION = "extractor-recovery-progress/0.2"
+
+#: A table block that holds at least this many data rows and decimal cells but yields at
+#: most this many candidates is called once more, and the attempt with more candidates is
+#: kept. The extractor model sometimes returns a single candidate and stops on such a
+#: block, with a normal finish reason; the same block then yields the full table on the
+#: next call. Both calls are recorded and both count against the budget.
+SPARSE_RETRY_MIN_DATA_ROWS = 3
+SPARSE_RETRY_MIN_DECIMAL_CELLS = 9
+SPARSE_RETRY_MAX_CANDIDATES = 1
+_DECIMAL_CELL = re.compile(r"\d+\.\d+")
+
+
+def _sparse_block_result(block: ResultBlock, candidates: Sequence[CandidateObservation]) -> bool:
+    """True when a dense table block came back nearly empty and deserves one more call."""
+
+    return (
+        len(candidates) <= SPARSE_RETRY_MAX_CANDIDATES
+        and block.data_row_count >= SPARSE_RETRY_MIN_DATA_ROWS
+        and len(_DECIMAL_CELL.findall(block.body_text)) >= SPARSE_RETRY_MIN_DECIMAL_CELLS
+    )
+
+
 # 0.2 adds origin_policy: the export gate can now be told which producer-origin bases a
 # run is willing to export, so the run must say which one it used.
 _CANDIDATE_VALIDATION_SCHEMA_VERSION = "candidate-validation/0.2"
@@ -291,6 +316,13 @@ _RETRYABLE_NO_CALL_FAILURE_CODES = frozenset(
 )
 _PIPELINE_RUN_SCHEMA_VERSION = "pipeline-run/0.4"
 _CORPUS_RUN_SCHEMA_VERSION = "corpus-run/0.3"
+#: Segmentation telemetry every paper run records so nothing is cut silently.
+_PAGE_SELECTION_COUNTS = (
+    "page_count",
+    "pages_selected",
+    "blocks_dropped_in_references",
+    "tables_chunked",
+)
 _RETURNED_MODEL_MISMATCH = "provider_response_returned_model_mismatch"
 _PAPER_RUN_OUTPUTS = (
     "run.json",
@@ -1215,6 +1247,38 @@ def _select_pages(layout: PdfLayout, spec: PaperSpec):
     return select_result_pages(layout, limit=spec.max_result_pages)
 
 
+def block_segmentation_config(settings: PipelineSettings) -> ResultBlockConfig:
+    """Return the one segmentation configuration every stage derives from settings."""
+
+    return ResultBlockConfig(max_blocks_per_page=settings.max_blocks_per_page)
+
+
+def page_selection_record(
+    selected_pages: Sequence[PageFragment], segmentation: PageSegmentation
+) -> dict[str, Any]:
+    """Describe which pages were read and what segmentation kept, without any text."""
+
+    return {
+        "schema_version": "page-selection/0.1",
+        **segmentation.telemetry(),
+        "selected_pages": [page.page for page in selected_pages],
+        "pages": [
+            {
+                "page": page.page,
+                "blocks": len(page.blocks),
+                "blocks_dropped_in_references": page.blocks_dropped_in_references,
+            }
+            for page in segmentation.pages
+        ],
+    }
+
+
+def _finish_length_count(calls: Sequence[ProviderCall]) -> int:
+    """Count completed calls the provider cut off at ``max_tokens``."""
+
+    return sum(call.finish_reason == "length" for call in calls)
+
+
 def _block_fragment(block: ResultBlock):
     """Adapt a bounded block to the existing source-fragment extraction contract."""
 
@@ -1316,6 +1380,7 @@ def _clear_paper_run_outputs(output_dir: Path) -> None:
     # retained for a later opt-in resume. Leaving them behind when the row stage is
     # disabled makes offline coverage mistake a prior ledger for the current run.
     for name in (
+        "page-selection.json",
         "row-enumeration-plan.json",
         "row-enumeration-preflight.json",
         "row-enumeration.json",
@@ -3476,16 +3541,14 @@ def run_paper(
         source_processing,
     )
     selected_pages = _select_pages(layout, spec)
-    block_config = ResultBlockConfig(max_blocks_per_page=settings.max_blocks_per_page)
-    blocks = [
-        block
-        for page in selected_pages
-        for block in segment_page_result_blocks(
-            page,
-            config=block_config,
-        )
-    ]
+    block_config = block_segmentation_config(settings)
+    segmentation = segment_result_pages(layout, selected_pages, block_config)
+    blocks = segmentation.blocks
     write_json(output_dir / "private" / "result-blocks.json", blocks)
+    write_json(
+        output_dir / "private" / "page-selection.json",
+        page_selection_record(selected_pages, segmentation),
+    )
     code_state = _code_state(settings.project_root)
     tuple_contract = _tuple_checkpoint_contract(
         spec=spec,
@@ -3648,6 +3711,8 @@ def run_paper(
     blocks_succeeded = 0
     blocks_failed = 0
     blocks_resumed = 0
+    sparse_retries = 0
+    sparse_retries_kept = 0
     successfully_examined_blocks: list[ResultBlock] = []
     for block in blocks:
         fragment = _block_fragment(block)
@@ -3713,6 +3778,8 @@ def run_paper(
 
         page_result: tuple[list[CandidateObservation], ProviderCall, list[str]] | None = None
         extraction_error: Exception | None = None
+        sparse_retry: dict[str, Any] | None = None
+        discarded_call: ProviderCall | None = None
         base_attempt_resumed = validated_recovery is not None
         if validated_recovery is not None:
             recovery_attempts, _ = validated_recovery
@@ -3733,22 +3800,53 @@ def run_paper(
             )
             resumed_calls.append(base_call)
         else:
-            try:
-                page_result = extract_page_candidates(
+
+            def extract_once(
+                current_fragment: PageFragment = fragment,
+            ) -> tuple[list[CandidateObservation], ProviderCall, list[str]]:
+                return extract_page_candidates(
                     client=client,
                     model=settings.model,
                     paper_id=spec.paper_id,
                     paper_title=spec.title,
-                    fragment=fragment,
+                    fragment=current_fragment,
                     max_tokens=settings.max_tokens,
                     temperature=settings.temperature,
                     reasoning_effort=settings.reasoning_effort,
                     seed=settings.seed,
                 )
+
+            try:
+                page_result = extract_once()
             except ProviderBudgetError:
                 raise
             except Exception as error:
                 extraction_error = error
+            if page_result is not None and _sparse_block_result(block, page_result[0]):
+                first = page_result
+                try:
+                    second = extract_once()
+                except ProviderBudgetError:
+                    raise
+                except Exception as error:
+                    retry_code, retry_call, _ = _extractor_failure(error)
+                    if retry_call is not None:
+                        calls.append(retry_call)
+                    sparse_retry = {
+                        "first_candidates": len(first[0]),
+                        "retry_candidates": None,
+                        "retry_error_code": retry_code,
+                        "kept": "first",
+                    }
+                else:
+                    keep_retry = len(second[0]) > len(first[0])
+                    page_result = second if keep_retry else first
+                    discarded_call = first[1] if keep_retry else second[1]
+                    sparse_retry = {
+                        "first_candidates": len(first[0]),
+                        "retry_candidates": len(second[0]),
+                        "kept": "retry" if keep_retry else "first",
+                    }
 
         if extraction_error is not None:
             error = extraction_error
@@ -3863,16 +3961,27 @@ def run_paper(
         assert page_result is not None
         page_candidates, call, page_warnings = page_result
         candidates.extend(page_candidates)
-        calls.append(call)
-        successful_new_calls.append(call)
+        block_calls = [call] if discarded_call is None else [discarded_call, call]
+        calls.extend(block_calls)
+        successful_new_calls.extend(block_calls)
         blocks_succeeded += 1
         successfully_examined_blocks.append(block)
+        if sparse_retry is not None:
+            sparse_retries += 1
+            if sparse_retry["kept"] == "retry":
+                sparse_retries_kept += 1
+            page_warnings = [
+                *page_warnings,
+                f"sparse_output_retried={sparse_retry['first_candidates']}->"
+                f"{sparse_retry['retry_candidates']} kept={sparse_retry['kept']}",
+            ]
         block_attempts.append(
             {
                 "block_id": block.block_id,
                 "page": block.page,
                 "status": "success",
                 "completed_provider_call": True,
+                **({"sparse_retry": sparse_retry} if sparse_retry is not None else {}),
             }
         )
         warnings.extend(
@@ -3894,9 +4003,13 @@ def run_paper(
                 candidate.model_dump(mode="json", by_alias=True, exclude_none=True)
                 for candidate in page_candidates
             ],
+            # The checkpoint binds calls to attempts one to one, so only the kept call
+            # is recorded here; the discarded call of a sparse retry stays in this run's
+            # telemetry and in the budget ledger.
             "calls": [call.model_dump(mode="json")],
             "successful_call_indexes": [0],
             "warnings": page_warnings,
+            **({"sparse_retry": sparse_retry} if sparse_retry is not None else {}),
         }
         write_json(checkpoint_path, checkpoint)
 
@@ -4329,7 +4442,11 @@ def run_paper(
                 "passed_candidate_ids": sorted(verifier_accept_ids),
             },
         )
-    candidates = route_candidate_attribution(candidates, {layout.source_id: layout})
+    candidates = route_candidate_attribution(
+        candidates,
+        {layout.source_id: layout},
+        context=paper_context_from_title(manifest.title),
+    )
     if settings.origin_model is not None:
         assert origin_checkpoint is not None
         if settings.verifier_model is None:
@@ -4823,6 +4940,10 @@ def run_paper(
             "verifier_gate_sidecar_sha256": verifier_sidecar_sha256,
         },
         "selected_pages": [fragment.page for fragment in selected_pages],
+        "page_count": layout.page_count,
+        "pages_selected": len(selected_pages),
+        "blocks_dropped_in_references": segmentation.blocks_dropped_in_references,
+        "tables_chunked": segmentation.tables_chunked,
         "result_block_segmentation": asdict(block_config),
         "selected_blocks": [
             {
@@ -4853,6 +4974,9 @@ def run_paper(
                 "calls_resumed": len(resumed_calls),
                 "calls_resumed_succeeded": extractor_resumed_succeeded,
                 "calls_resumed_failed": extractor_resumed_failed,
+                "calls_finish_length": _finish_length_count([*calls, *resumed_calls]),
+                "sparse_retries": sparse_retries,
+                "sparse_retries_kept": sparse_retries_kept,
                 "no_call_failures": len(extractor_no_call_failures),
                 "requests_rejected": extractor_requests_rejected,
                 "transport_failures": extractor_transport_failures,
@@ -5387,6 +5511,14 @@ def _bounded_checkpoint_progress(paper_root: Path) -> dict[str, Any]:
                 "page_count": layout.page_count,
             }
 
+    page_selection: dict[str, Any] | None = None
+    raw_selection = load("private/page-selection.json")
+    if isinstance(raw_selection, dict) and all(
+        isinstance(raw_selection.get(key), int) and not isinstance(raw_selection.get(key), bool)
+        for key in _PAGE_SELECTION_COUNTS
+    ):
+        page_selection = {key: raw_selection[key] for key in _PAGE_SELECTION_COUNTS}
+
     row_plan_summary: dict[str, Any] | None = None
     raw_plan = load("private/row-enumeration-plan.json")
     if isinstance(raw_plan, dict):
@@ -5463,6 +5595,7 @@ def _bounded_checkpoint_progress(paper_root: Path) -> dict[str, Any]:
         "finalized_candidate_counts_available": False,
         "selected_pages": selected_pages,
         "selected_blocks": selected_blocks,
+        "page_selection": page_selection,
         "layout": layout_summary,
         "row_plan": row_plan_summary,
         "source_processing": source_processing_summary,
@@ -5549,6 +5682,7 @@ def _bounded_paper_summary(
         "source_processing": progress["source_processing"],
         "candidate_lineage": None,
         "selected_pages": progress["selected_pages"],
+        **{key: (progress["page_selection"] or {}).get(key) for key in _PAGE_SELECTION_COUNTS},
         "selected_blocks": progress["selected_blocks"],
         "result_block_segmentation": block_config,
         "layout_parser": (progress["layout"]["parser"] if progress["layout"] is not None else None),
@@ -5569,6 +5703,9 @@ def _bounded_paper_summary(
                 "calls_resumed": 0,
                 "calls_resumed_succeeded": 0,
                 "calls_resumed_failed": 0,
+                "calls_finish_length": _finish_length_count(stage_calls("extractor")["calls"]),
+                "sparse_retries": 0,
+                "sparse_retries_kept": 0,
                 "no_call_failures": 0,
                 "requests_rejected": 0,
                 "transport_failures": 0,
@@ -5740,9 +5877,7 @@ def run_corpus(
         limits=limits,
     )
     failure_code_state = _code_state(settings.project_root)
-    failure_block_config = asdict(
-        ResultBlockConfig(max_blocks_per_page=settings.max_blocks_per_page)
-    )
+    failure_block_config = asdict(block_segmentation_config(settings))
     _clear_corpus_run_outputs(settings.output_root)
     summaries: list[dict[str, Any]] = []
     bounded_stop: ProviderBudgetExhausted | None = None
@@ -5806,6 +5941,7 @@ def run_corpus(
                 "title": paper.title,
                 "candidate_validation": _candidate_validation_run_configuration(settings),
                 "selected_pages": [],
+                **dict.fromkeys(_PAGE_SELECTION_COUNTS),
                 "selected_blocks": [],
                 "result_block_segmentation": failure_block_config,
                 "layout_parser": None,
@@ -5826,6 +5962,11 @@ def run_corpus(
                         "calls_resumed": 0,
                         "calls_resumed_succeeded": 0,
                         "calls_resumed_failed": 0,
+                        "calls_finish_length": _finish_length_count(
+                            failure_stage("extractor")["calls"]
+                        ),
+                        "sparse_retries": 0,
+                        "sparse_retries_kept": 0,
                         "no_call_failures": 0,
                         "requests_rejected": 0,
                         "transport_failures": 0,
