@@ -6,11 +6,13 @@ import pytest
 
 from proceedings_to_eee.extraction.pdf_layout import PageFragment
 from proceedings_to_eee.extraction.region_index import (
+    Region,
     RegionKind,
     build_page_region_index,
     build_region_index,
     locate_quote,
 )
+from proceedings_to_eee.extraction.result_blocks import ResultBlockConfig
 
 # Invented page with an external leaderboard comparator and a paper-owned system under
 # one deliberately ambiguous caption.
@@ -286,3 +288,225 @@ def test_spans_stay_inside_the_page(page_number: int) -> None:
         if region.span.column_start is not None:
             assert region.span.column_start >= 1
             assert region.span.column_end >= region.span.column_start
+
+
+# ----------------------------------------------------------------------------------
+# Caption attachment
+# ----------------------------------------------------------------------------------
+
+# A caption whose explanatory note and vertical spacing put the grid seven lines below it.
+DISTANT_CAPTION_PAGE = """Table 5. Synthetic scores with a long note between caption and grid.
+The note explains the abbreviations used below.
+It continues for a second line.
+And a third line that ends the note.
+
+
+
+     System         Accuracy   F1
+     Model Cedar      0.91     0.88
+     Model Juniper    0.87     0.84
+"""
+
+# Two captions compete for one grid: the farther one comes first in reading order.
+COMPETING_CAPTIONS_PAGE = """Table 7. Caption of a figure that left no text on this page.
+
+
+Table 8. Synthetic scores for the grid below.
+     System         Accuracy   F1
+     Model Cedar      0.91     0.88
+"""
+
+# One caption sits exactly between two grids.
+SHARED_CAPTION_PAGE = """     System         Accuracy   F1
+     Model Cedar      0.91     0.88
+
+
+Table 9. Synthetic scores printed below the first grid.
+
+
+     System         Accuracy   F1
+     Model Juniper    0.87     0.84
+"""
+
+# Side-by-side column tables with captions below them. The right caption is closer to
+# the left table than the left caption is, but captions do not change column.
+SIDE_BY_SIDE_PAGE = """     System       Precision  Recall  F1               System          Model-A  Model-B
+     Cedar           0.42     0.81  0.55             Baseline          0.37     0.69
+     Juniper         0.57     0.63  0.60             Tuned             0.49     0.62
+     Maple           0.61     0.59  0.66
+     Willow          0.52     0.71  0.58
+                                                     Table 4. Right-hand synthetic grid.
+
+Table 3. Left-hand synthetic grid.
+
+Two reviewers covered three categories and we        The right column discusses tradeoffs across
+report aggregate scores for every system.            invented model variants in this fixture.
+All systems used the same synthetic split            System Juniper prioritizes recall over
+and the same deterministic scoring script.           precision in the illustrative values.
+"""
+
+# A full-width grid whose centred caption is too far below to join the spanning run,
+# so the gutter cuts the caption into two column fragments.
+SEVERED_CAPTION_PAGE = """       Asset                   Measure-A  ScaleB     Index-C        Measure-D  ScaleE   Index-F
+       System Cedar              0.42       0.81      0.55            0.37      0.69      0.48
+       System Juniper            0.57       0.63      0.60            0.49      0.62      0.55
+       System Maple              0.61       0.59      0.66            0.52      0.64      0.51
+
+
+                     Table 2. Invented scoring grid across two fixture categories.
+
+Two reviewers covered three categories and we               The right column discusses tradeoffs across
+report aggregate scores for every system.                   invented model variants in this fixture.
+All systems used the same synthetic split                   System Juniper prioritizes recall over
+and the same deterministic scoring script.                  precision in the illustrative values.
+Results average three invented trials and                   Combining the variants can support
+require no additional calibration.                          decisions in a synthetic deployment.
+"""
+
+# A left-column caption whose text exactly fills its column. It stands six lines below
+# the left grid and one line above the right grid, but nothing of it is in the gutter.
+COLUMN_FILLING_CAPTION_PAGE = """     System       Precision  Recall  F1               The right column discusses tradeoffs across
+     Cedar           0.42     0.81  0.55             invented model variants in this fixture.
+     Juniper         0.57     0.63  0.60             System Juniper prioritizes recall over
+                                                     precision in the illustrative values.
+Two reviewers covered three categories and we        Combining the variants can support
+report aggregate scores for every system.            decisions in a synthetic deployment.
+All systems used the same synthetic split            Every value in this column is invented
+and the same deterministic scoring script.           and serves only the fixture geometry.
+Table 6. Left-hand grid that fills its column
+                                                          System         Model-A  Model-B
+Results average three invented trials and                 Baseline         0.37     0.69
+require no additional calibration.                        Tuned            0.49     0.62
+"""
+
+FIGURE_ABOVE_PAGE = """Figure 3. Synthetic plot whose axis labels did not survive extraction.
+
+     System         Accuracy   F1
+     Model Cedar      0.91     0.88
+"""
+
+FIGURE_BELOW_PAGE = """     0.0        0.1         0.2         0.3
+     0.42       0.55        0.61        0.70
+
+Figure 4. Synthetic curve rendered as aligned tick labels.
+"""
+
+
+def _tables(text: str, config: ResultBlockConfig | None = None) -> list[Region]:
+    index = build_page_region_index(_page(text, page=3), config)
+    return [region for region in index.regions if region.kind is RegionKind.TABLE]
+
+
+def test_caption_beyond_three_lines_is_attached_within_the_default_distance() -> None:
+    [table] = _tables(DISTANT_CAPTION_PAGE)
+    assert table.table_label == "Table 5"
+    assert table.caption_position == "leading"
+
+
+def test_caption_distance_is_configurable() -> None:
+    [table] = _tables(DISTANT_CAPTION_PAGE, ResultBlockConfig(caption_distance_lines=3))
+    assert table.caption is None
+
+
+def test_nearest_caption_wins_over_the_first_caption_in_reading_order() -> None:
+    [table] = _tables(COMPETING_CAPTIONS_PAGE)
+    assert table.table_label == "Table 8"
+
+
+def test_a_caption_between_two_grids_is_claimed_once() -> None:
+    tables = _tables(SHARED_CAPTION_PAGE)
+    assert len(tables) == 2
+    claimed = [table for table in tables if table.caption is not None]
+    assert len(claimed) == 1
+    assert claimed[0].caption_position == "trailing"
+
+
+def test_side_by_side_tables_keep_their_own_column_captions() -> None:
+    tables = _tables(SIDE_BY_SIDE_PAGE)
+    labels = {table.span.column_start: table.table_label for table in tables}
+    assert len(tables) == 2
+    assert labels[min(labels)] == "Table 3"
+    assert labels[max(labels)] == "Table 4"
+
+
+def test_a_caption_severed_by_the_gutter_attaches_to_the_full_width_table() -> None:
+    index = build_page_region_index(_page(SEVERED_CAPTION_PAGE, page=3))
+    assert len(index.panel_columns) == 3
+    [table] = [region for region in index.regions if region.kind is RegionKind.TABLE]
+    assert table.span.start_line == 1
+    assert table.table_label == "Table 2"
+    assert table.caption_position == "trailing"
+
+
+def test_a_caption_that_merely_fills_its_column_stays_in_its_panel() -> None:
+    index = build_page_region_index(_page(COLUMN_FILLING_CAPTION_PAGE, page=3))
+    [left_end] = [end for start, end in index.panel_columns if start == 1]
+    [caption] = [region for region in index.regions if region.kind is RegionKind.CAPTION]
+    assert caption.span.column_end == left_end
+    labels = {
+        region.span.column_start <= left_end: region.table_label
+        for region in index.regions
+        if region.kind is RegionKind.TABLE
+    }
+    assert labels == {True: "Table 6", False: None}
+
+
+@pytest.mark.parametrize(
+    ("text", "label"),
+    [(FIGURE_ABOVE_PAGE, None), (FIGURE_BELOW_PAGE, "Figure 4")],
+)
+def test_a_figure_caption_attaches_only_from_below(text: str, label: str | None) -> None:
+    [table] = _tables(text)
+    assert table.table_label == label
+
+
+# ----------------------------------------------------------------------------------
+# Heading heuristics
+# ----------------------------------------------------------------------------------
+
+
+def _heading_texts(line: str) -> list[str]:
+    text = f"An opening sentence for the fixture.\n{line}\nThe fixture sentence continues here.\n"
+    index = build_page_region_index(_page(text, page=2))
+    return [region.text.strip() for region in index.regions if region.kind is RegionKind.HEADING]
+
+
+@pytest.mark.parametrize("line", ["F1", "ACM", "AUC F1", "ROC AUC"])
+def test_a_short_all_caps_token_is_not_a_heading(line: str) -> None:
+    assert _heading_texts(line) == []
+
+
+@pytest.mark.parametrize(
+    "line", ["RELATED WORK", "EXPERIMENTAL RESULTS", "ABSTRACT", "Overview", "Übersicht"]
+)
+def test_titles_and_single_capitalized_words_remain_headings(line: str) -> None:
+    assert _heading_texts(line) == [line]
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "References",
+        "REFERENCES",
+        "Bibliography",
+        "Works Cited",
+        "Bibliographie",
+        "Références",
+        "Riferimenti bibliografici",
+        "7 Riferimenti bibliografici",
+        "Bibliografia",
+        "Literatur",
+        "Literaturverzeichnis",
+        "Referenzen",
+        "Quellen",
+    ],
+)
+def test_bibliography_headings_in_corpus_languages_open_the_reference_section(
+    heading: str,
+) -> None:
+    text = f"{heading}\nAlex Example and Casey Example. 2024. A Synthetic Reference.\n"
+    index = build_page_region_index(_page(text, page=9))
+    entries = [region for region in index.regions if "Alex Example" in region.text]
+    assert entries
+    assert all(region.kind is RegionKind.REFERENCES for region in entries)
+    assert all(region.in_references for region in entries)

@@ -10,6 +10,7 @@ from pydantic import Field, field_validator, model_validator
 
 from proceedings_to_eee.domain.attribution import AttributionVerdict
 from proceedings_to_eee.domain.base import StrictModel
+from proceedings_to_eee.domain.dataset_binding import DatasetBinding
 from proceedings_to_eee.domain.provenance import (
     CandidateField,
     CandidateFieldProvenance,
@@ -23,6 +24,7 @@ from proceedings_to_eee.domain.status import (
     ExportStatus,
     ReferentialStatus,
     ReportingStatus,
+    SupportMatchMode,
     TextSupportStatus,
     ValueComparator,
 )
@@ -148,6 +150,10 @@ class CandidateObservation(StrictModel):
     value: ReportedValue | None = None
     evidence: list[EvidenceAnchor] = Field(min_length=1)
     text_support: TextSupportStatus = TextSupportStatus.UNVERIFIED
+    # How the supported quotes were matched: exact within one page line, or whole
+    # consecutive page lines for a quote that itself spans lines. Review state like
+    # ``text_support``, so it is absent from stable_id() and never reaches records.
+    support_match_mode: SupportMatchMode | None = None
     referential_status: ReferentialStatus = ReferentialStatus.UNVERIFIED
     export_status: ExportStatus = ExportStatus.NEEDS_REVIEW
     export_reason: str | None = None
@@ -167,6 +173,11 @@ class CandidateObservation(StrictModel):
     # recorded contract hash. Absent from stable_id() below, so attaching it leaves
     # observation IDs and EEE filenames byte-identical.
     attribution: AttributionVerdict | None = None
+    # Deterministic binding of `scope.dataset_raw` to a verified inventory entry. A
+    # sidecar like `attribution`: attached by code after validation, absent from
+    # stable_id(), from field_value_sha256s() and from the review gate payload hash, so
+    # binding a candidate leaves its observation id and every gate that names it intact.
+    dataset_binding: DatasetBinding | None = None
 
     @model_validator(mode="after")
     def enforce_atomic_invariants(self) -> CandidateObservation:

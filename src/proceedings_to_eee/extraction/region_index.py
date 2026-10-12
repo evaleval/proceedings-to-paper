@@ -84,8 +84,27 @@ _TITLE_FUNCTION_WORDS = frozenset(
     }
 )
 
-_SOLE_WORD_HEADING = re.compile(r"^[A-Z][A-Za-z-]{3,}\.?$")
-_REFERENCE_HEADING = re.compile(r"^(references|bibliography|works cited)\b", re.IGNORECASE)
+# One capitalized word of at least four letters standing alone. Any Latin-script letter
+# counts, so "Références" and "Literaturverzeichnis" read as headings like "References".
+_SOLE_WORD_HEADING = re.compile(r"^[^\W\d_](?:[^\W\d_]|-){3,}\.?$")
+# An all-caps line is a heading only when it is long enough to be a title. A lone token
+# such as "F1" or "ACM" on its own line is a table cell or an acronym.
+_MIN_CAPS_HEADING_WORDS = 2
+_MIN_CAPS_HEADING_CHARACTERS = 8
+# Bibliography headings in the English, French, Italian and German forms of the corpus.
+_REFERENCE_FORMS = (
+    r"references|bibliography|works cited|bibliographie|références|"
+    r"riferimenti bibliografici|bibliografia|literatur|literaturverzeichnis|"
+    r"referenzen|quellen"
+)
+_REFERENCE_HEADING = re.compile(rf"^(?:{_REFERENCE_FORMS})\b", re.IGNORECASE)
+# A whole line holding only a bibliography heading, optionally numbered. Matched before
+# the title-case rule, which would read the lowercase second word of "Riferimenti
+# bibliografici" as a sentence.
+_REFERENCE_HEADING_LINE = re.compile(
+    rf"^(?:(?P<number>\d+(?:\.\d+)*)[.)]?\s+)?(?P<title>{_REFERENCE_FORMS})\s*\.?$",
+    re.IGNORECASE,
+)
 _APPENDIX_HEADING = re.compile(r"^(appendix|appendices|supplement)", re.IGNORECASE)
 
 # Page furniture only when it also sits at the very top or bottom of the page.
@@ -189,6 +208,11 @@ class QuoteLocation(StrictModel):
     region_id: str
     kind: RegionKind
     span: GridSpan
+    #: True when the quote was found only on the physical page lines and the location
+    #: was read from a single-panel index rebuilt for the page. Region ids of that index
+    #: collide with the panelled index's ids, so a consumer that holds the panelled
+    #: index must not look the id up there.
+    single_panel: bool = False
     section_path: list[str] = Field(default_factory=list)
     in_references: bool = False
     in_appendix: bool = False
@@ -264,6 +288,9 @@ def _heading_of(text: str) -> tuple[str, str | None] | None:
         return None
     if _CAPTION_LABEL.match(stripped):
         return None
+    reference = _REFERENCE_HEADING_LINE.match(stripped)
+    if reference:
+        return reference.group("title"), reference.group("number")
     run_in = _RUN_IN_HEADING.match(stripped)
     if run_in:
         return run_in.group("title").strip(), run_in.group("number")
@@ -277,17 +304,24 @@ def _heading_of(text: str) -> tuple[str, str | None] | None:
         if title and title[0].isupper() and _title_cased(title):
             return title, numbered.group("number")
     letters = [character for character in stripped if character.isalpha()]
-    if letters and len(stripped.split()) <= 12 and all(char.isupper() for char in letters):
+    if (
+        letters
+        and _MIN_CAPS_HEADING_WORDS <= len(stripped.split()) <= 12
+        and len(stripped) >= _MIN_CAPS_HEADING_CHARACTERS
+        and all(char.isupper() for char in letters)
+    ):
         return stripped.rstrip("."), None
     # A line holding one capitalized word and nothing else is a heading in paper
     # layout. "References" is the case that matters most: missing it leaves a whole
     # bibliography classified as prose and its author lists reading as headings.
-    if _SOLE_WORD_HEADING.match(stripped):
+    if stripped[0].isupper() and _SOLE_WORD_HEADING.match(stripped):
         return stripped.rstrip("."), None
+    # An all-caps line that failed the length test above must not re-enter here.
     if (
         len(stripped.split()) in range(2, 9)
         and _title_cased(stripped)
         and stripped[0].isupper()
+        and not all(char.isupper() for char in letters)
         and not _CONTAINS_NUMBER.search(stripped)
     ):
         return stripped.rstrip("."), None
@@ -571,33 +605,161 @@ def _caption_of(panel: PagePanel, start: int, end: int) -> Caption:
     )
 
 
-def _attach_captions(regions: list[Region], captions: list[tuple[int, int, Caption]]) -> None:
-    """Bind each caption to the adjacent table, preferring the closer side."""
+def _caption_placement(table: Region, caption: Region) -> tuple[int, str] | None:
+    """Line distance from the table to the caption and the caption's side of it.
+
+    Adjacent lines are one apart. ``None`` means the two overlap, which happens only
+    across column panels and never makes a caption belong to a table.
+    """
+
+    if table.span.end_line < caption.span.start_line:
+        return caption.span.start_line - table.span.end_line, "trailing"
+    if table.span.start_line > caption.span.end_line:
+        return table.span.start_line - caption.span.end_line, "leading"
+    return None
+
+
+def _strong_heading(region: Region) -> bool:
+    """A numbered or all-caps heading. Title-cased phrases are too often table cells."""
+
+    if region.kind is not RegionKind.HEADING:
+        return False
+    letters = [character for character in region.text if character.isalpha()]
+    return region.section_number is not None or (
+        bool(letters) and all(character.isupper() for character in letters)
+    )
+
+
+def _separated(
+    regions: list[Region], table: Region, caption: Region, panel_of: dict[str, int]
+) -> bool:
+    """True when a section heading or another table stands between caption and table."""
+
+    lower = min(table.span.end_line, caption.span.end_line)
+    upper = max(table.span.start_line, caption.span.start_line)
+    panels = {panel_of[table.region_id], panel_of[caption.region_id]}
+    return any(
+        (region.kind is RegionKind.TABLE or _strong_heading(region))
+        and region is not table
+        and panel_of[region.region_id] in panels
+        and region.span.start_line > lower
+        and region.span.end_line < upper
+        for region in regions
+    )
+
+
+@dataclass(frozen=True)
+class _PanelGeometry:
+    """What the caption rule needs to know about the page's column panels."""
+
+    panel_of: dict[str, int]
+    full_width: frozenset[int]
+    severed: frozenset[str]
+
+    def may_cross(self, table: Region, caption: Region) -> bool:
+        """A caption changes panel only when the page geometry severed it from its table.
+
+        Side-by-side column tables each keep their own caption. A full-width table lives
+        in the spanning panel while its centred caption, or the left half of it, lands
+        in a column panel; a caption whose text runs into the gutter was cut by it.
+        """
+
+        table_panel = self.panel_of[table.region_id]
+        caption_panel = self.panel_of[caption.region_id]
+        if table_panel == caption_panel:
+            return True
+        return bool({table_panel, caption_panel} & self.full_width) or (
+            caption.region_id in self.severed
+        )
+
+
+def _attach_captions(regions: list[Region], geometry: _PanelGeometry, max_distance: int) -> None:
+    """Bind captions to tables, nearest pair first, each side claimed at most once.
+
+    A caption sits above or below its table within ``max_distance`` lines, in the same
+    column panel or, for a centred caption severed by the gutter, in another one. Pairs
+    are taken in distance order so a closer caption is never pre-empted by a farther one
+    that merely came first in reading order. Ties prefer the same panel, then a caption
+    below the table: in the development corpus three of four attached table captions sat
+    below their table. A section heading or a second table between the two means the
+    caption belongs elsewhere.
+    """
 
     tables = [region for region in regions if region.kind is RegionKind.TABLE]
-    for start, end, caption in captions:
-        best: tuple[int, str, Region] | None = None
-        for table in tables:
-            if table.span.end_line < start + 1:
-                distance = start + 1 - table.span.end_line
-                position = "trailing"
-            elif table.span.start_line > end + 1:
-                distance = table.span.start_line - (end + 1)
-                position = "leading"
-            else:
+    captions = [region for region in regions if region.kind is RegionKind.CAPTION]
+    panel_of = geometry.panel_of
+    pairs: list[tuple[int, bool, bool, int, int, int, int, str]] = []
+    for table_index, table in enumerate(tables):
+        for caption_index, caption in enumerate(captions):
+            placement = _caption_placement(table, caption)
+            if placement is None:
                 continue
-            if distance > 3:
+            distance, position = placement
+            assert caption.caption is not None
+            # A figure caption stands below its figure; above a table it names something
+            # else, such as the figure whose axis labels did not survive as a region.
+            figure = caption.caption.label_kind == "figure"
+            if (
+                distance > max_distance
+                or (figure and position != "trailing")
+                or not geometry.may_cross(table, caption)
+                or _separated(regions, table, caption, panel_of)
+            ):
                 continue
-            if best is None or distance < best[0]:
-                best = (distance, position, table)
-        if best is None:
+            pairs.append(
+                (
+                    distance,
+                    panel_of[table.region_id] != panel_of[caption.region_id],
+                    position != "trailing",
+                    table.span.start_line,
+                    caption.span.start_line,
+                    table_index,
+                    caption_index,
+                    position,
+                )
+            )
+    claimed_tables: set[int] = set()
+    claimed_captions: set[int] = set()
+    for *_, table_index, caption_index, position in sorted(pairs):
+        if table_index in claimed_tables or caption_index in claimed_captions:
             continue
-        _, position, table = best
-        if table.caption is not None:
-            continue
+        claimed_tables.add(table_index)
+        claimed_captions.add(caption_index)
+        table = tables[table_index]
+        caption = captions[caption_index].caption
+        assert caption is not None
         table.caption = caption
         table.caption_position = position
         table.table_label = caption.label
+
+
+def _gutter_columns(panels: list[PagePanel], page_width: int) -> tuple[int, int] | None:
+    """Zero-based column slice of the gutter between the left and right column panels."""
+
+    left = right = None
+    for panel in panels:
+        start, end = panel.source_column_start or 1, panel.source_column_end
+        if start == 1 and end is not None and end < page_width:
+            left = end
+        elif start > 1:
+            right = start
+    if left is None or right is None:
+        return None
+    return left, right - 1
+
+
+def _runs_through_gutter(page_lines: list[str], span: GridSpan, gutter: tuple[int, int]) -> bool:
+    """True when text on the spanned page lines stands inside the gutter columns.
+
+    The gutter cut that text out of its column panel, so the line is wider than the
+    column and a caption on it may belong to a table in another panel. A line that merely
+    fills its column has no text in the gutter and stays where it is.
+    """
+
+    start, stop = gutter
+    return any(
+        page_lines[index][start:stop].strip() for index in range(span.start_line - 1, span.end_line)
+    )
 
 
 @dataclass
@@ -629,6 +791,17 @@ def build_page_region_index(
         [PagePanel(lines=page.text.splitlines())] if single_panel else page_panels(page, config)
     )
     regions: list[Region] = []
+    panel_of: dict[str, int] = {}
+    page_width = max((panel.source_column_end or 0) for panel in panels)
+    full_width = frozenset(
+        index
+        for index, panel in enumerate(panels, start=1)
+        if (panel.source_column_start or 1) == 1
+        and (panel.source_column_end or page_width) == page_width
+    )
+    page_lines = page.text.splitlines()
+    gutter = _gutter_columns(panels, page_width)
+    severed: set[str] = set()
     ordinal = 0
     carried = state if state is not None else SectionState()
     for panel_index, panel in enumerate(panels, start=1):
@@ -637,8 +810,6 @@ def build_page_region_index(
         section_number = carried.section_number
         in_references = carried.in_references
         in_appendix = carried.in_appendix
-        captions: list[tuple[int, int, Caption]] = []
-        panel_regions: list[Region] = []
         for start, end in _group_regions(kinds, config.max_blank_gap):
             kind = kinds[start]
             assert kind is not None
@@ -682,18 +853,24 @@ def build_page_region_index(
             )
             if kind is RegionKind.CAPTION:
                 caption = _caption_of(panel, start, end)
-                captions.append((start, end, caption))
                 # A caption is itself evidence. It carries its own label so that a quote
                 # landing in the caption resolves without depending on table attachment.
                 region.caption = caption
                 region.table_label = caption.label
-            panel_regions.append(region)
-        _attach_captions(panel_regions, captions)
-        regions.extend(panel_regions)
+                if (
+                    gutter is not None
+                    and panel.source_column_end == gutter[0]
+                    and _runs_through_gutter(page_lines, region.span, gutter)
+                ):
+                    severed.add(region.region_id)
+            panel_of[region.region_id] = panel_index
+            regions.append(region)
         carried.section_path = list(section_path)
         carried.section_number = section_number
         carried.in_references = in_references
         carried.in_appendix = in_appendix
+    geometry = _PanelGeometry(panel_of=panel_of, full_width=full_width, severed=frozenset(severed))
+    _attach_captions(regions, geometry, config.caption_distance_lines)
     return PageRegionIndex(
         source_id=page.source_id,
         page=page.page,
@@ -757,6 +934,7 @@ def locate_quote_in_index(
     config = config or ResultBlockConfig()
     panels = page_panels(page, config)
     best = _search_panels(panels, needle)
+    single_panel = False
     if best is None and len(panels) > 1:
         # A full-width table or a centred caption on an otherwise two-column page is
         # severed by the gutter and therefore exists in no panel. The physical page
@@ -764,10 +942,11 @@ def locate_quote_in_index(
         best = _search_panels([PagePanel(lines=page.text.splitlines())], needle)
         if best is not None:
             index = build_page_region_index(page, config, single_panel=True)
+            single_panel = True
     if best is None:
         return None
     start, end, _, panel = best
-    return _location(index, panel, start, end)
+    return _location(index, panel, start, end, single_panel=single_panel)
 
 
 def _search_panels(panels: list[PagePanel], needle: str) -> tuple[int, int, int, PagePanel] | None:
@@ -791,7 +970,12 @@ def _search_panels(panels: list[PagePanel], needle: str) -> tuple[int, int, int,
 
 
 def _location(
-    index: PageRegionIndex, panel: PagePanel, start: int, end: int
+    index: PageRegionIndex,
+    panel: PagePanel,
+    start: int,
+    end: int,
+    *,
+    single_panel: bool = False,
 ) -> QuoteLocation | None:
     region = _region_covering(index, start + 1, end + 1, panel)
     if region is None:
@@ -800,6 +984,7 @@ def _location(
         region_id=region.region_id,
         kind=region.kind,
         span=_line_span(panel, start, end, panel.lines),
+        single_panel=single_panel,
         section_path=list(region.section_path),
         in_references=region.in_references,
         in_appendix=region.in_appendix,
