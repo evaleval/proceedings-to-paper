@@ -355,6 +355,8 @@ _CORPUS_SEGMENTATION_FIELDS = {
     "min_signal_score",
     "max_blocks_per_page",
 }
+#: Segmentation caps that a run may leave unset, meaning nothing was cut.
+_OPTIONAL_SEGMENTATION_CAPS = {"max_data_rows", "max_blocks_per_page"}
 _CORPUS_CANDIDATE_VALIDATION_FIELDS = {"schema_version", "min_confidence"}
 _CORPUS_CANDIDATE_VALIDATION_VERSIONS = {
     "candidate-validation/0.1",
@@ -1843,7 +1845,10 @@ def _validate_corpus_projection(
         if paper_spec.include_pages:
             if selected_pages != paper_spec.include_pages:
                 raise PublicDevelopmentPreviewError("configured and executed page scopes disagree")
-        elif len(selected_pages) > paper_spec.max_result_pages:
+        elif (
+            paper_spec.max_result_pages is not None
+            and len(selected_pages) > paper_spec.max_result_pages
+        ):
             raise PublicDevelopmentPreviewError("automatic page selection exceeded its limit")
         if paper.get("code") != dict(receipt.code):
             raise PublicDevelopmentPreviewError("paper code binding differs from sealed receipt")
@@ -2961,6 +2966,8 @@ def _validate_public_corpus_schema(corpus: Mapping[str, object]) -> list[str]:
         for field, value in segmentation.items():
             if field == "min_signal_score":
                 _nonnegative_number(value, f"paper segmentation {field}")
+            elif value is None and field in _OPTIONAL_SEGMENTATION_CAPS:
+                continue
             else:
                 _nonnegative_int(value, f"paper segmentation {field}")
         if (
@@ -3725,8 +3732,11 @@ def _validate_public_sources_schema(sources: Mapping[str, object]) -> list[str]:
             or page_scope.get("selection_mode")
             != ("configured_page_scope" if configured else "automatic_selector")
             or (configured and configured != selected)
-            or len(selected)
-            > _nonnegative_int(page_scope.get("max_result_pages"), "maximum result pages")
+            or (
+                page_scope.get("max_result_pages") is not None
+                and len(selected)
+                > _nonnegative_int(page_scope.get("max_result_pages"), "maximum result pages")
+            )
         ):
             raise PublicDevelopmentPreviewError("public source page scope is invalid")
         for uri_field in ("acm_url", "pdf_url", "repository_url"):

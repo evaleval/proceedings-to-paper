@@ -11,7 +11,8 @@ papers:
     pdf_url: https://example.org/paper.pdf
     perspective_role: Primary paper to inspect for reported evaluation results.
     include_pages: []
-    max_result_pages: 8
+    # null reads every page; an integer caps the automatic result-page ranking.
+    max_result_pages: null
     supplement_urls: []
     expected_spot_checks: []
     notes: []

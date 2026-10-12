@@ -12,6 +12,7 @@ import yaml
 
 from proceedings_to_eee.census import (
     CensusImportError,
+    _corpus_yaml_bytes,
     build_corpus_spec,
     draw_reserve,
     find_previously_inspected,
@@ -227,6 +228,25 @@ def test_generated_corpus_loads_and_carries_no_census_metadata(tmp_path: Path) -
     text = path.read_text(encoding="utf-8")
     for leaked in ("hate speech", "builds_own_instrument", "Perspective API", "Screening note"):
         assert leaked not in text
+
+
+@pytest.mark.parametrize("max_result_pages", [None, 12])
+def test_written_corpus_round_trips_the_page_cap(
+    tmp_path: Path, max_result_pages: int | None
+) -> None:
+    rows, _ = load_census_rows(_write_census(tmp_path / "census.csv", _census_of(3)))
+    corpus = build_corpus_spec(
+        rows, corpus_id="census-test", description="d", max_result_pages=max_result_pages
+    )
+    path = tmp_path / "census-test.yaml"
+    path.write_bytes(_corpus_yaml_bytes(corpus))
+
+    reloaded = load_corpus(path)
+
+    assert {paper.max_result_pages for paper in reloaded.papers} == {max_result_pages}
+    assert ("max_result_pages" in path.read_text(encoding="utf-8")) is (
+        max_result_pages is not None
+    )
 
 
 def test_import_writes_every_artifact_and_holds_the_reserve_back(tmp_path: Path) -> None:

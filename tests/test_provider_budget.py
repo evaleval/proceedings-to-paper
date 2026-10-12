@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
+from proceedings_to_eee.census_run import CensusLimits
 from proceedings_to_eee.cli import app
 from proceedings_to_eee.corpus import CorpusSpec, PaperSpec
 from proceedings_to_eee.io import canonical_json_bytes, sha256_bytes, write_json
@@ -576,6 +577,33 @@ def test_resume_allows_bound_ceiling_increase_but_rejects_accounting_change(
         _budgeted(tmp_path, _SuccessClient(), limits=changed_accounting)
 
 
+def test_census_default_call_ceiling_resumes_ledgers_written_under_the_earlier_one(
+    tmp_path: Path,
+) -> None:
+    """Raising the per-paper call ceiling is a monotonic amendment, never a new contract."""
+
+    earlier = CensusLimits(per_paper_max_calls=400)
+    current = CensusLimits()
+    assert current.per_paper_max_calls > earlier.per_paper_max_calls
+
+    def paper_limits(limits: CensusLimits) -> ProviderBudgetLimits:
+        return ProviderBudgetLimits(
+            max_structured_calls=limits.per_paper_max_calls,
+            max_cost_usd=limits.per_paper_max_cost_usd,
+            cost_reservation_per_call_usd=limits.reservation_usd,
+        )
+
+    first = _budgeted(tmp_path, _SuccessClient(), limits=paper_limits(earlier))
+    first.structured_chat(**_request())
+
+    resumed = _budgeted(tmp_path, _SuccessClient(), limits=paper_limits(current))
+    assert resumed.summary["structured_calls_started"] == 1
+    assert resumed.summary["max_structured_calls"] == current.per_paper_max_calls
+
+    with pytest.raises(ProviderBudgetContractError, match="cannot decrease"):
+        _budgeted(tmp_path, _SuccessClient(), limits=paper_limits(earlier))
+
+
 def _paper() -> PaperSpec:
     return PaperSpec(
         paper_id="budget-paper",
@@ -590,8 +618,8 @@ def _paper() -> PaperSpec:
 def _settings(tmp_path: Path, *, calls: int = 2) -> PipelineSettings:
     return PipelineSettings(
         project_root=tmp_path,
-        schema_path=PROJECT_ROOT / "schemas" / "eee-0.2.2" / "eval.schema.json",
-        schema_sha256="088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
+        schema_path=PROJECT_ROOT / "schemas" / "eee-0.3.0" / "eval.schema.json",
+        schema_sha256="c9c6195aec8a9dfa0b2aba4924ac1aa8a184c9d8ca97cee778cb531088e39b48",
         output_root=tmp_path / "runs",
         model="fixture/requested",
         provider_max_structured_calls=calls,

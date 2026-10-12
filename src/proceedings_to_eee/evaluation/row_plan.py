@@ -15,6 +15,7 @@ from proceedings_to_eee.extraction.llm import (
     extractor_request_contract,
     row_extractor_request_contract,
 )
+from proceedings_to_eee.extraction.page_blocks import segment_result_pages
 from proceedings_to_eee.extraction.pdf_layout import (
     PdfLayout,
     extract_pdf_layout,
@@ -25,7 +26,6 @@ from proceedings_to_eee.extraction.result_blocks import (
     ResultBlock,
     ResultBlockConfig,
     maximum_legacy_block_invocations,
-    segment_page_result_blocks,
 )
 from proceedings_to_eee.extraction.row_enumeration import (
     RowEnumerationConfig,
@@ -329,7 +329,7 @@ def _current_blocks(
     *,
     layout: PdfLayout,
     spec: PaperSpec,
-    max_blocks_per_page: int,
+    max_blocks_per_page: int | None,
 ) -> tuple[list[int], list[ResultBlock]]:
     if spec.include_pages:
         missing = [page for page in spec.include_pages if page < 1 or page > layout.page_count]
@@ -339,11 +339,7 @@ def _current_blocks(
     else:
         selected = select_result_pages(layout, limit=spec.max_result_pages)
     block_config = ResultBlockConfig(max_blocks_per_page=max_blocks_per_page)
-    blocks = [
-        block
-        for page in selected
-        for block in segment_page_result_blocks(page, config=block_config)
-    ]
+    blocks = segment_result_pages(layout, selected, block_config).blocks
     block_ids = [block.block_id for block in blocks]
     if len(block_ids) != len(set(block_ids)):
         raise ValueError(f"{spec.paper_id}: current segmentation produced duplicate block ids")
@@ -579,7 +575,7 @@ def build_next_run_row_plan_report(
     project_root: Path,
     extractor_model: str,
     config: RowEnumerationConfig | None = None,
-    max_blocks_per_page: int = 6,
+    max_blocks_per_page: int | None = None,
     output_path: Path | None = None,
 ) -> dict[str, Any]:
     """Reconstruct the exact current-code next-run preflight from frozen source bytes.
@@ -593,8 +589,8 @@ def build_next_run_row_plan_report(
         raise ValueError(f"run root does not exist or is not a directory: {run_root}")
     if not extractor_model.strip():
         raise ValueError("extractor model is required for exact checkpoint reuse")
-    if max_blocks_per_page < 1:
-        raise ValueError("max_blocks_per_page must be positive")
+    if max_blocks_per_page is not None and max_blocks_per_page < 1:
+        raise ValueError("max_blocks_per_page must be positive when provided")
     paper_dirs = {
         path.name: path
         for path in sorted(run_root.iterdir())

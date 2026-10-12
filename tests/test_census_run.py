@@ -15,6 +15,7 @@ import pytest
 
 from proceedings_to_eee import census_run
 from proceedings_to_eee.census_run import (
+    BUDGET_STOPPED,
     DONE,
     FAILED,
     NOT_STARTED,
@@ -27,7 +28,12 @@ from proceedings_to_eee.census_run import (
 )
 from proceedings_to_eee.corpus import CorpusSpec, PaperSpec
 from proceedings_to_eee.pipeline import PipelineSettings
-from proceedings_to_eee.providers.budget import ProviderBudgetContractError
+from proceedings_to_eee.providers.budget import (
+    ProviderBudgetContractError,
+    ProviderBudgetExhausted,
+)
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _settings(tmp_path: Path, **overrides: Any) -> PipelineSettings:
@@ -105,11 +111,16 @@ def stub(monkeypatch: pytest.MonkeyPatch):
     calls: list[str] = []
     cost = {"value": 0.10}
     failures: set[str] = set()
+    budget_stops: set[str] = set()
 
     def fake_run_paper(*, spec: PaperSpec, settings: PipelineSettings, client: Any) -> dict:
         calls.append(spec.paper_id)
         if spec.paper_id in failures:
             raise RuntimeError("stubbed pipeline failure")
+        if spec.paper_id in budget_stops:
+            raise ProviderBudgetExhausted(
+                reason="cost_limit", summary={"structured_calls_started": 9}
+            )
         directory = settings.output_root / spec.paper_id
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "run.json").write_text(
@@ -127,7 +138,99 @@ def stub(monkeypatch: pytest.MonkeyPatch):
         census_run, "BudgetedProviderClient", lambda **kw: _StubBudget(cost["value"])
     )
     monkeypatch.setattr(census_run, "_budget_contract", lambda *a, **k: {"stub": True})
-    return {"calls": calls, "cost": cost, "failures": failures}
+    return {"calls": calls, "cost": cost, "failures": failures, "budget_stops": budget_stops}
+
+
+def _real_schema_settings(tmp_path: Path) -> PipelineSettings:
+    """Settings whose schema can be loaded, as the bounded summary requires."""
+
+    return _settings(
+        tmp_path,
+        schema_path=PROJECT_ROOT / "schemas" / "eee-0.2.2" / "eval.schema.json",
+        schema_sha256="088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a",
+    )
+
+
+def test_a_ceiling_stopped_paper_writes_what_it_has_and_is_listed(tmp_path: Path, stub) -> None:
+    settings = _real_schema_settings(tmp_path)
+    corpus = _corpus(2)
+    for paper in corpus.papers:
+        _freeze(settings, paper.paper_id)
+    stub["cost"]["value"] = 0.4
+    stub["budget_stops"].add("paper-0")
+
+    result = run_census(
+        corpus=corpus,
+        settings=settings,
+        order=[p.paper_id for p in corpus.papers],
+        limits=CensusLimits(workers=1, max_cost_usd=10.0),
+    )
+
+    assert result["counts"][BUDGET_STOPPED] == 1
+    assert result["counts"][DONE] == 1
+    assert result["budget_stopped_papers"] == ["paper-0"]
+    paper_dir = settings.output_root / "paper-0"
+    run = json.loads((paper_dir / "run.json").read_text(encoding="utf-8"))
+    assert run["status"] == BUDGET_STOPPED
+    assert run["bounded_stop"]["reason"] == "cost_limit"
+    assert run["counts_status"] == "not_finalized_due_to_bounded_stop"
+    assert "census_contract_key" not in run
+    assert (paper_dir / "observations.jsonl").read_text(encoding="utf-8") == ""
+    row = next(row for row in _ledger(settings) if row["paper_id"] == "paper-0")
+    assert row["state"] == BUDGET_STOPPED
+    assert row["run_json"] == BUDGET_STOPPED
+    assert row["reported_cost_usd"] == pytest.approx(0.4)
+    progress = json.loads((settings.output_root / "census-progress.json").read_text())
+    assert progress["budget_stopped_papers"] == ["paper-0"]
+    # The stop is not completion: a resume relaunches the paper instead of skipping it.
+    state, _ = census_run.paper_state(settings, corpus.papers[0], expected_key="any")
+    assert state == NOT_STARTED
+
+
+def test_a_ceiling_stop_is_recorded_even_when_its_summary_cannot_be_written(
+    tmp_path: Path, stub
+) -> None:
+    settings = _settings(tmp_path)  # the fixture schema cannot be loaded
+    corpus = _corpus(1)
+    _freeze(settings, "paper-0")
+    stub["budget_stops"].add("paper-0")
+
+    result = run_census(
+        corpus=corpus,
+        settings=settings,
+        order=["paper-0"],
+        limits=CensusLimits(workers=1, max_cost_usd=10.0),
+    )
+
+    assert result["budget_stopped_papers"] == ["paper-0"]
+    row = next(row for row in _ledger(settings) if row["paper_id"] == "paper-0")
+    assert row["state"] == BUDGET_STOPPED
+    assert row["run_json"] == "unavailable"
+    assert not (settings.output_root / "paper-0" / "run.json").exists()
+
+
+def test_a_ceiling_stop_is_not_a_technical_attempt_so_a_raised_ceiling_relaunches(
+    tmp_path: Path, stub
+) -> None:
+    settings = _real_schema_settings(tmp_path)
+    corpus = _corpus(1)
+    _freeze(settings, "paper-0")
+    stub["budget_stops"].add("paper-0")
+    order = ["paper-0"]
+    limits = CensusLimits(workers=1, max_cost_usd=10.0, max_technical_retries=2)
+
+    for _ in range(2):
+        stopped = run_census(corpus=corpus, settings=settings, order=order, limits=limits)
+        assert stopped["counts"][BUDGET_STOPPED] == 1
+        assert census_run.technical_attempts(settings.output_root / "paper-0") == 0
+    stub["budget_stops"].discard("paper-0")
+    raised = run_census(corpus=corpus, settings=settings, order=order, limits=limits)
+
+    assert raised["counts"][DONE] == 1
+    assert raised["counts"][RETRY_CAPPED] == 0
+    paper_dir = settings.output_root / "paper-0"
+    assert len(list(paper_dir.glob("run.superseded-*.json"))) == 2
+    assert json.loads((paper_dir / "run.json").read_text(encoding="utf-8"))["status"] == "success"
 
 
 def _ledger(settings: PipelineSettings) -> list[dict[str, Any]]:
@@ -141,17 +244,29 @@ def test_contract_key_ignores_code_state_but_tracks_the_real_inputs(tmp_path: Pa
     settings = _settings(tmp_path)
     manifest = _freeze(settings, "paper-0")
 
-    base = extraction_contract_key(settings, manifest)
-    assert base == extraction_contract_key(settings, manifest)
+    base = extraction_contract_key(settings, manifest, max_result_pages=None)
+    assert base == extraction_contract_key(settings, manifest, max_result_pages=None)
 
-    other_model = extraction_contract_key(_settings(tmp_path, model="test/model-b"), manifest)
+    other_model = extraction_contract_key(
+        _settings(tmp_path, model="test/model-b"), manifest, max_result_pages=None
+    )
     assert other_model != base
 
-    rows_on = extraction_contract_key(_settings(tmp_path, row_enumeration_enabled=True), manifest)
+    rows_on = extraction_contract_key(
+        _settings(tmp_path, row_enumeration_enabled=True), manifest, max_result_pages=None
+    )
     assert rows_on != base
 
+    capped_pages = extraction_contract_key(settings, manifest, max_result_pages=8)
+    assert capped_pages != base
+
+    capped_blocks = extraction_contract_key(
+        _settings(tmp_path, max_blocks_per_page=6), manifest, max_result_pages=None
+    )
+    assert capped_blocks != base
+
     manifest.write_text(json.dumps({"paper_id": "paper-0", "body": "changed"}), encoding="utf-8")
-    assert extraction_contract_key(settings, manifest) != base
+    assert extraction_contract_key(settings, manifest, max_result_pages=None) != base
 
 
 def test_a_paper_without_a_frozen_manifest_is_never_downloaded(tmp_path: Path, stub) -> None:
@@ -202,7 +317,11 @@ def test_a_completed_paper_under_the_same_contract_is_skipped(tmp_path: Path, st
         _freeze(settings, paper.paper_id)
     # The key must come from this paper's own manifest; each manifest hashes differently.
     own_manifest = settings.output_root / "paper-0" / "source-manifest.json"
-    _complete(settings, "paper-0", extraction_contract_key(settings, own_manifest))
+    _complete(
+        settings,
+        "paper-0",
+        extraction_contract_key(settings, own_manifest, max_result_pages=None),
+    )
 
     result = run_census(
         corpus=corpus,

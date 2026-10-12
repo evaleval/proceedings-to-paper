@@ -44,6 +44,14 @@ def test_paper_requires_exactly_one_pdf_location() -> None:
         _paper(pdf_path="paper.pdf")
 
 
+def test_page_cap_is_absent_by_default_and_accepts_long_papers() -> None:
+    assert _paper().max_result_pages is None
+    assert _paper(max_result_pages=48).max_result_pages == 48
+    assert _paper(max_result_pages=None).max_result_pages is None
+    with pytest.raises(ValidationError, match="max_result_pages"):
+        _paper(max_result_pages=0)
+
+
 def test_load_corpus_resolves_local_pdf_relative_to_corpus_file(tmp_path: Path) -> None:
     corpus_dir = tmp_path / "nested" / "config"
     source_dir = tmp_path / "nested" / "sources"

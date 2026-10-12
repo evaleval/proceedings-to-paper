@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict
 from pathlib import Path
+from string import ascii_uppercase
 from typing import Any
 
 import pytest
@@ -579,3 +581,245 @@ def test_mixed_table_prose_chunks_overlap_only_the_trailing_prose_suffix() -> No
     for left, right in zip(blocks, blocks[1:], strict=False):
         shared = set(left.body_text.splitlines()) & set(right.body_text.splitlines())
         assert "Atlas                  0.91" not in shared
+
+
+# ----------------------------------------------------------------------------------
+# Captions beyond the context windows
+# ----------------------------------------------------------------------------------
+
+# A note and a double blank line separate the caption from the grid, so the leading
+# context window stops at the header row.
+DISTANT_LEADING_CAPTION_PAGE = """Table 11. Synthetic indicator grid with a note between caption and grid.
+The note explains the abbreviations used in the grid.
+It also names the synthetic split that produced the values.
+
+
+     Unit               Measure-A   ScaleB   Index-C
+     System Cedar          0.42       0.81   0.55
+     System Juniper        0.57       0.63   0.60
+     System Maple          0.67       0.49   0.57
+"""
+
+# Notes and a double blank line separate the grid from the caption printed below it.
+DISTANT_TRAILING_CAPTION_PAGE = """     Unit               Measure-A   ScaleB   Index-C
+     System Cedar          0.42       0.81   0.55
+     System Juniper        0.57       0.63   0.60
+     System Maple          0.67       0.49   0.57
+Values are averaged over three synthetic trials.
+Bold marks the best synthetic value per column.
+
+
+Table 12. Synthetic indicator grid with its caption printed below the notes.
+"""
+
+# One caption between two grids, adjacent to the second one.
+TWO_GRIDS_ONE_CAPTION_PAGE = """     Unit               Measure-A   ScaleB   Index-C
+     System Cedar          0.42       0.81   0.55
+     System Juniper        0.57       0.63   0.60
+
+
+Table 13. Synthetic grid printed directly above its rows.
+     Unit               Measure-A   ScaleB   Index-C
+     System Maple          0.67       0.49   0.57
+     System Willow         0.38       0.73   0.50
+"""
+
+
+def _data_blocks(text: str, config: ResultBlockConfig | None = None):
+    blocks = segment_page_result_blocks(_page(text, page=11), config)
+    return [block for block in blocks if block.data_row_count > 0]
+
+
+def test_a_caption_beyond_the_leading_window_joins_the_leading_context() -> None:
+    [block] = _data_blocks(DISTANT_LEADING_CAPTION_PAGE)
+    assert block.context_start_line == 1
+    assert block.context_text.startswith("Table 11.")
+    assert block.body_start_line == 7
+    assert "Table 11." not in block.body_text
+
+
+def test_a_caption_beyond_the_trailing_window_becomes_the_trailing_context() -> None:
+    [block] = _data_blocks(DISTANT_TRAILING_CAPTION_PAGE)
+    assert block.trailing_context_start_line == 9
+    assert block.trailing_context_text.startswith("Table 12.")
+    assert block.body_end_line < block.trailing_context_start_line
+    assert "Table 12." not in block.body_text
+
+
+@pytest.mark.parametrize(
+    ("text", "span"),
+    [
+        (DISTANT_LEADING_CAPTION_PAGE, "context_text"),
+        (DISTANT_TRAILING_CAPTION_PAGE, "trailing_context_text"),
+    ],
+)
+def test_the_caption_distance_bounds_the_block_context(text: str, span: str) -> None:
+    [block] = _data_blocks(text, ResultBlockConfig(caption_distance_lines=3))
+    assert "Table 1" not in getattr(block, span)
+
+
+def test_a_caption_between_two_grids_goes_to_the_nearer_grid_only() -> None:
+    blocks = _data_blocks(TWO_GRIDS_ONE_CAPTION_PAGE)
+    assert len(blocks) == 2
+    with_caption = [block for block in blocks if "Table 13." in block.prompt_text()]
+    assert len(with_caption) == 1
+    assert "System Maple" in with_caption[0].body_text
+
+
+def _caption_above_header_run(notes: int, headers: int) -> str:
+    """A caption, explanatory notes, value-free aligned header rows, then data rows."""
+
+    lines = ["Table 14. Synthetic grid printed below a run of value-free header rows."]
+    lines += [
+        f"Note {letter} explains one abbreviation used in the grid."
+        for letter in ascii_uppercase[:notes]
+    ]
+    lines += [
+        f"     Header-{letter}{letter}          Alpha   Beta   Gamma"
+        for letter in ascii_uppercase[:headers]
+    ]
+    lines += [
+        f"     System {name:<8}          0.4{index}    0.8{index}   0.5{index}"
+        for index, name in enumerate(("Cedar", "Juniper", "Maple", "Willow"))
+    ]
+    return "\n".join(lines) + "\n"
+
+
+@pytest.mark.parametrize(("notes", "headers", "carries_caption"), [(3, 5, True), (10, 18, False)])
+def test_the_extended_leading_context_is_bounded_by_the_caption_reach(
+    notes: int, headers: int, carries_caption: bool
+) -> None:
+    config = ResultBlockConfig()
+    blocks = _data_blocks(_caption_above_header_run(notes, headers), config)
+    assert blocks
+    for block in blocks:
+        assert block.context_start_line is not None
+        context_lines = block.context_end_line - block.context_start_line + 1
+        assert context_lines <= config.context_lines + config.caption_distance_lines
+        assert ("Table 14." in block.context_text) is carries_caption
+
+
+def test_a_caption_inside_the_window_leaves_the_window_unchanged() -> None:
+    block = _table_block()
+    assert block.context_start_line == 1
+    assert block.context_end_line == 3
+    assert block.body_start_line == 4
+
+
+def test_caption_distance_must_be_non_negative() -> None:
+    with pytest.raises(ValueError):
+        ResultBlockConfig(caption_distance_lines=-1)
+
+
+def _long_table_page(rows: int) -> PageFragment:
+    body = "\n".join(
+        f"System {index:02d}        0.{index:02d}   0.{index + 1:02d}   0.{index + 2:02d}"
+        for index in range(1, rows + 1)
+    )
+    return _page(
+        f"Table 15. Chunked synthetic matrix.\n\nSystem             Accuracy  Recall  F1\n{body}\n",
+        page=15,
+    )
+
+
+def test_long_table_is_chunked_by_data_rows_with_caption_and_header_repeated() -> None:
+    config = ResultBlockConfig()
+    chunks = sorted(
+        (
+            block
+            for block in segment_page_result_blocks(_long_table_page(30))
+            if block.data_row_count
+        ),
+        key=lambda block: block.body_start_line,
+    )
+
+    assert [block.chunk_index for block in chunks] == list(range(1, len(chunks) + 1))
+    assert {block.chunk_count for block in chunks} == {len(chunks)}
+    assert len(chunks) > 1
+    assert all(block.data_row_count <= config.max_data_rows for block in chunks)
+    assert sum(block.data_row_count for block in chunks) == 30
+    for block in chunks:
+        assert "Table 15." in block.context_text
+        assert "Accuracy  Recall  F1" in block.context_text
+    assert chunks[0].header_repeated is False
+    assert all(block.header_repeated for block in chunks[1:])
+
+
+def _wide_table_page(rows: int, columns: int) -> PageFragment:
+    header = "System             " + "  ".join(f"M{index}" for index in range(1, columns + 1))
+    # Row labels carry no digits, so every numeric token in the body is a value cell.
+    body = "\n".join(
+        f"System {ascii_uppercase[row % 26]}{ascii_uppercase[row // 26]}        "
+        + "   ".join(f"0.{(row + column) % 100:02d}" for column in range(columns))
+        for row in range(rows)
+    )
+    return _page(f"Table 16. Wide synthetic matrix.\n\n{header}\n{body}\n", page=16)
+
+
+@pytest.mark.parametrize(("rows", "columns"), [(12, 8), (14, 3), (6, 24)])
+def test_chunks_are_bounded_by_numeric_cells_not_only_rows(rows: int, columns: int) -> None:
+    config = ResultBlockConfig()
+    chunks = sorted(
+        (
+            block
+            for block in segment_page_result_blocks(_wide_table_page(rows, columns))
+            if block.data_row_count
+        ),
+        key=lambda block: block.body_start_line,
+    )
+
+    assert sum(block.data_row_count for block in chunks) == rows
+    assert all(block.data_row_count <= config.max_data_rows for block in chunks)
+    # Every chunk body stays inside the cell bound unless a single row alone exceeds it.
+    assert all(
+        len(re.findall(r"\d+\.\d+", block.body_text)) <= config.max_numeric_cells
+        or block.data_row_count == 1
+        for block in chunks
+    )
+    # A wide table is cut into more chunks than its row count alone would require.
+    expected_at_least = -(-rows * columns // config.max_numeric_cells)
+    assert len(chunks) >= min(expected_at_least, rows)
+    for block in chunks[1:]:
+        assert block.header_repeated is True
+        assert "Table 16." in block.context_text
+
+
+def test_the_cell_bound_can_be_switched_off_and_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="max_numeric_cells"):
+        ResultBlockConfig(max_numeric_cells=0)
+    config = ResultBlockConfig(max_numeric_cells=None)
+    chunks = [
+        block
+        for block in segment_page_result_blocks(_wide_table_page(12, 8), config=config)
+        if block.data_row_count
+    ]
+    assert len(chunks) == 1
+    assert len(re.findall(r"\d+\.\d+", chunks[0].body_text)) == 96
+
+
+def test_a_table_within_the_row_cap_is_a_single_unrepeated_chunk() -> None:
+    blocks = [
+        block for block in segment_page_result_blocks(_long_table_page(5)) if block.data_row_count
+    ]
+
+    assert len(blocks) == 1
+    assert (blocks[0].chunk_index, blocks[0].chunk_count) == (1, 1)
+    assert blocks[0].header_repeated is False
+
+
+def test_chunk_metadata_must_be_consistent() -> None:
+    block = _table_block()
+
+    with pytest.raises(ValueError, match="chunk_index"):
+        block.model_copy(update={"chunk_index": 3, "chunk_count": 2}).model_validate(
+            block.model_copy(update={"chunk_index": 3, "chunk_count": 2}).model_dump()
+        )
+    with pytest.raises(ValueError, match="header_repeated"):
+        type(block).model_validate(block.model_copy(update={"header_repeated": True}).model_dump())
+
+
+def test_line_budget_must_fit_the_row_cap_behind_repeated_context() -> None:
+    with pytest.raises(ValueError, match="max_lines"):
+        ResultBlockConfig(max_lines=20, context_lines=8, max_data_rows=14)
+    assert ResultBlockConfig(max_lines=20, context_lines=8, max_data_rows=None).max_lines == 20
+    assert ResultBlockConfig(max_lines=30, context_lines=8, max_data_rows=14).max_data_rows == 14

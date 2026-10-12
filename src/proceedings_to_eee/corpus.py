@@ -39,7 +39,8 @@ class PaperSpec(StrictModel):
     repository_commit: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{40}$")
     perspective_role: str
     include_pages: list[int] = Field(default_factory=list)
-    max_result_pages: int = Field(default=8, ge=1, le=30)
+    #: Optional cap on automatically selected pages; ``None`` reads every page.
+    max_result_pages: int | None = Field(default=None, ge=1)
     expected_spot_checks: list[ExpectedSpotCheck] = Field(default_factory=list)
     reference_path: str | None = None
     notes: list[str] = Field(default_factory=list)

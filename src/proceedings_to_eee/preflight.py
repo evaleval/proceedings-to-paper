@@ -11,13 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from proceedings_to_eee.corpus import CorpusSpec, build_corpus_binding
+from proceedings_to_eee.extraction.page_blocks import SegmentedPage, segment_result_pages
 from proceedings_to_eee.extraction.pdf_layout import extract_pdf_layout
 from proceedings_to_eee.extraction.result_blocks import (
     LEGACY_RECOVERY_MAX_DEPTH,
     ResultBlock,
-    ResultBlockConfig,
     maximum_legacy_block_invocations,
-    segment_page_result_blocks,
 )
 from proceedings_to_eee.extraction.row_enumeration import (
     RowEnumerationPlan,
@@ -29,7 +28,9 @@ from proceedings_to_eee.pipeline import (
     _code_state,
     _safe_error_message,
     _select_pages,
+    block_segmentation_config,
     freeze_corpus,
+    page_selection_record,
 )
 from proceedings_to_eee.sources.manifest import (
     SourceManifest,
@@ -69,6 +70,7 @@ def _clear_planning_artifacts(paper_root: Path) -> None:
         paper_root / "preflight.json",
         private_root / "layout.json",
         private_root / "result-blocks.json",
+        private_root / "page-selection.json",
         private_root / "row-enumeration-plan.json",
     ):
         path.unlink(missing_ok=True)
@@ -99,16 +101,16 @@ def _error_record(error: Exception, *, stage: str) -> dict[str, str]:
     }
 
 
-def _selected_page_record(page: Any, blocks: list[ResultBlock]) -> dict[str, Any]:
-    page_blocks = [block for block in blocks if block.page == page.page]
+def _selected_page_record(page: Any, segmented: SegmentedPage) -> dict[str, Any]:
     return {
         "page": page.page,
         "fragment_id": page.fragment_id,
         "text_sha256": page.text_sha256,
         "result_signal_score": page.result_signal_score,
         "numeric_token_count": page.numeric_token_count,
-        "result_blocks": len(page_blocks),
-        "block_ids": [block.block_id for block in page_blocks],
+        "result_blocks": len(segmented.blocks),
+        "blocks_dropped_in_references": segmented.blocks_dropped_in_references,
+        "block_ids": [block.block_id for block in segmented.blocks],
     }
 
 
@@ -281,7 +283,7 @@ def preflight_corpus(
     settings.output_root.mkdir(parents=True, exist_ok=True)
     freeze_summary = freeze_corpus(corpus, settings)
     freeze_results = {item["paper_id"]: item for item in freeze_summary["results"]}
-    block_config = ResultBlockConfig(max_blocks_per_page=settings.max_blocks_per_page)
+    block_config = block_segmentation_config(settings)
     code_state = _code_state(settings.project_root)
     paper_reports: list[dict[str, Any]] = []
 
@@ -333,16 +335,18 @@ def preflight_corpus(
             layout_path = paper_root / "private" / "layout.json"
             layout_sha256 = write_json(layout_path, layout)
             selected_pages = _select_pages(layout, spec)
-            blocks = [
-                block
-                for page in selected_pages
-                for block in segment_page_result_blocks(page, config=block_config)
-            ]
+            segmentation = segment_result_pages(layout, selected_pages, block_config)
+            blocks = segmentation.blocks
             block_ids = [block.block_id for block in blocks]
             if len(block_ids) != len(set(block_ids)):
                 raise ValueError("result-block segmentation produced duplicate block ids")
             blocks_path = paper_root / "private" / "result-blocks.json"
             blocks_sha256 = write_json(blocks_path, blocks)
+            page_selection_path = paper_root / "private" / "page-selection.json"
+            page_selection_sha256 = write_json(
+                page_selection_path, page_selection_record(selected_pages, segmentation)
+            )
+            segmented_by_page = {item.page: item for item in segmentation.pages}
             row_plan = build_row_enumeration_plan(
                 layout,
                 blocks,
@@ -371,11 +375,15 @@ def preflight_corpus(
                 "layout_parser": layout.parser,
                 "layout_parser_version": layout.parser_version,
                 "page_count": layout.page_count,
+                "pages_selected": len(selected_pages),
+                "blocks_dropped_in_references": segmentation.blocks_dropped_in_references,
+                "tables_chunked": segmentation.tables_chunked,
                 "selection": {
                     "configured_include_pages": spec.include_pages,
                     "max_result_pages": spec.max_result_pages,
                     "selected_pages": [
-                        _selected_page_record(page, blocks) for page in selected_pages
+                        _selected_page_record(page, segmented_by_page[page.page])
+                        for page in selected_pages
                     ],
                 },
                 "result_block_segmentation": asdict(block_config),
@@ -396,6 +404,10 @@ def preflight_corpus(
                     "result_blocks": {
                         "path": "private/result-blocks.json",
                         "sha256": blocks_sha256,
+                    },
+                    "page_selection": {
+                        "path": "private/page-selection.json",
+                        "sha256": page_selection_sha256,
                     },
                     "row_plan": {
                         "path": "private/row-enumeration-plan.json",
@@ -497,8 +509,13 @@ def preflight_corpus(
         "papers_succeeded": len(successful),
         "papers_failed": len(failed),
         "counts": {
+            "page_count": sum(item["page_count"] for item in successful),
             "selected_pages": sum(len(item["selection"]["selected_pages"]) for item in successful),
             "result_blocks": sum(len(item["selected_blocks"]) for item in successful),
+            "blocks_dropped_in_references": sum(
+                item["blocks_dropped_in_references"] for item in successful
+            ),
+            "tables_chunked": sum(item["tables_chunked"] for item in successful),
             "rows_planned": sum(
                 item["row_plan"]["telemetry"]["rows_planned"] for item in successful
             ),

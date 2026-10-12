@@ -22,7 +22,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +32,21 @@ from proceedings_to_eee.extraction.llm_schema import (
     row_provider_json_schema,
 )
 from proceedings_to_eee.extraction.prompt import prompt_hash, row_prompt_hash
-from proceedings_to_eee.io import canonical_json_bytes, sha256_bytes, sha256_file, write_json
-from proceedings_to_eee.pipeline import PipelineSettings, _safe_error_message, run_paper
+from proceedings_to_eee.io import (
+    canonical_json_bytes,
+    sha256_bytes,
+    sha256_file,
+    write_json,
+    write_jsonl,
+)
+from proceedings_to_eee.pipeline import (
+    PipelineSettings,
+    _bounded_paper_summary,
+    _code_state,
+    _safe_error_message,
+    block_segmentation_config,
+    run_paper,
+)
 from proceedings_to_eee.providers.budget import (
     BudgetedProviderClient,
     ProviderBudgetContractError,
@@ -62,7 +75,7 @@ class CensusLimits:
     workers: int = 16
     max_cost_usd: float = 25.0
     per_paper_max_cost_usd: float = 1.5
-    per_paper_max_calls: int = 400
+    per_paper_max_calls: int = 2000
     reservation_usd: float = 0.05
     max_technical_retries: int = 2
 
@@ -75,22 +88,25 @@ class CensusLimits:
             raise ValueError("global cost ceiling must not be below the per-paper ceiling")
 
 
-def extraction_contract_key(settings: PipelineSettings, manifest_path: Path) -> str:
+def extraction_contract_key(
+    settings: PipelineSettings, manifest_path: Path, *, max_result_pages: int | None
+) -> str:
     """Identify the work a completed paper represents.
 
     Deliberately excludes the checkpoint contract, which embeds the git commit, the dirty
     flag and a hash of the whole source tree. Keying on that would mark every finished
     paper stale after any commit, so a census could never be resumed across a code change.
     What actually determines the extraction is the prompt, the wire schema, the model, the
-    row configuration and the exact frozen source.
+    page cap, the full segmentation configuration, the row configuration and the exact
+    frozen source.
     """
 
     payload = {
-        "schema_version": "census-skip-key/0.1",
+        "schema_version": "census-skip-key/0.2",
         "model": settings.model,
         "min_confidence": settings.min_confidence,
-        "max_result_pages_default": None,
-        "max_blocks_per_page": settings.max_blocks_per_page,
+        "max_result_pages": max_result_pages,
+        "result_block_segmentation": asdict(block_segmentation_config(settings)),
         "row_enumeration_enabled": settings.row_enumeration_enabled,
         "row_config": _row_config_payload(settings),
         "prompt_sha256": prompt_hash(),
@@ -146,12 +162,14 @@ def _attempts_path(directory: Path) -> Path:
 def technical_attempts(directory: Path) -> int:
     """Count consecutive launches that did not leave a usable run.json.
 
-    A failed or ceiling-stopped paper writes no run.json, so counting superseded run
-    files alone misses exactly the papers a retry cap exists for: resume would re-launch
-    them forever, re-charging their prior spend to the guard each time. The driver
-    therefore records each launch and clears the record once a paper produces a run. A
-    directory written before this existed is read from its superseded run files, so
-    history still counts.
+    A failed paper writes no run.json, so counting superseded run files alone misses
+    exactly the papers a retry cap exists for: resume would re-launch them forever,
+    re-charging their prior spend to the guard each time. The driver therefore records
+    each launch and clears the record once a paper produces a run. A directory written
+    before this existed is read from its superseded run files, so history still counts.
+    A per-paper ceiling stop is not a technical failure: its launch record is restored
+    and its superseded ``budget_stopped`` run files are not counted, so raising the
+    ceiling can always relaunch the paper.
     """
 
     recorded = 0
@@ -161,8 +179,19 @@ def technical_attempts(directory: Path) -> int:
             recorded = int(json.loads(path.read_text(encoding="utf-8")).get("attempts") or 0)
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             recorded = 0
-    superseded = len(list(directory.glob("run.superseded-*.json")))
+    superseded = sum(
+        _superseded_status(path) != BUDGET_STOPPED
+        for path in directory.glob("run.superseded-*.json")
+    )
     return max(recorded, superseded)
+
+
+def _superseded_status(path: Path) -> str | None:
+    try:
+        status = json.loads(path.read_text(encoding="utf-8")).get("status")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None
+    return status if isinstance(status, str) else None
 
 
 def _record_attempt(directory: Path, attempts: int) -> None:
@@ -173,6 +202,15 @@ def _record_attempt(directory: Path, attempts: int) -> None:
 
 def _clear_attempts(directory: Path) -> None:
     _attempts_path(directory).unlink(missing_ok=True)
+
+
+def _restore_attempts(directory: Path, attempts: int) -> None:
+    """Undo the launch record of a launch that ended at a per-paper ceiling."""
+
+    if attempts <= 0:
+        _clear_attempts(directory)
+    else:
+        _record_attempt(directory, attempts)
 
 
 def supersede_stale_ledger(directory: Path) -> str | None:
@@ -198,6 +236,45 @@ def supersede_stale_ledger(directory: Path) -> str | None:
     if head.is_file():
         head.rename(Path(f"{retired}.head.json"))
     return retired.name
+
+
+def write_budget_stopped_run(
+    *,
+    spec: PaperSpec,
+    settings: PipelineSettings,
+    error: ProviderBudgetExhausted,
+    started: float,
+) -> dict[str, Any]:
+    """Write what a ceiling-stopped paper has: a bounded run.json and empty observations.
+
+    The summary is the same typed bounded description `run-corpus` writes, under the
+    census status so resume and the atlas can tell a per-paper ceiling stop from a
+    finished paper. Candidates already checkpointed stay in the private checkpoint;
+    they have not passed the deterministic evidence checks, so none is written as an
+    observation.
+    """
+
+    from proceedings_to_eee.validation.eee_schema import load_schema
+
+    _, authority = load_schema(settings.schema_path, settings.schema_sha256)
+    summary = _bounded_paper_summary(
+        paper=spec,
+        settings=settings,
+        schema_version=authority.version,
+        schema_sha256=authority.sha256,
+        code_state=_code_state(settings.project_root),
+        block_config=asdict(block_segmentation_config(settings)),
+        error=error,
+        started=started,
+    )
+    summary["status"] = BUDGET_STOPPED
+    directory = _paper_dir(settings, spec.paper_id)
+    manifest_path = directory / "source-manifest.json"
+    if manifest_path.is_file() and not manifest_path.is_symlink():
+        summary["source_manifest_sha256"] = sha256_file(manifest_path)
+    write_jsonl(directory / "observations.jsonl", [])
+    write_json(directory / "run.json", summary)
+    return summary
 
 
 def _supersede(directory: Path) -> None:
@@ -340,7 +417,9 @@ def run_census(
         SOURCE_UNAVAILABLE: 0,
         NOT_STARTED: 0,
         RETRY_CAPPED: 0,
+        BUDGET_STOPPED: 0,
     }
+    budget_stopped_papers: list[str] = []
     counters_lock = threading.Lock()
     draining = threading.Event()
     started_at = now()
@@ -348,6 +427,8 @@ def run_census(
     def _record(slug: str, state: str, **fields: Any) -> None:
         with counters_lock:
             counters[state] = counters.get(state, 0) + 1
+            if state == BUDGET_STOPPED:
+                budget_stopped_papers.append(slug)
         ledger.append(
             {
                 "schema_version": CENSUS_LEDGER_SCHEMA_VERSION,
@@ -360,6 +441,7 @@ def run_census(
     def _write_progress(final: bool = False) -> None:
         with counters_lock:
             snapshot = dict(counters)
+            stopped = list(budget_stopped_papers)
         finished = sum(snapshot.values())
         elapsed = max(now() - started_at, 1e-9)
         rate = snapshot[DONE] / elapsed if elapsed else 0.0
@@ -375,6 +457,7 @@ def run_census(
                 "worst_case_usd": round(guard.worst_case, 6),
                 "cost_ceiling_usd": limits.max_cost_usd,
                 "stopped_for_budget": guard.stopped_for_budget,
+                "budget_stopped_papers": stopped,
                 "draining": draining.is_set(),
                 "papers_per_second": round(rate, 6),
                 "elapsed_seconds": round(elapsed, 3),
@@ -405,7 +488,9 @@ def run_census(
         if not manifest_path.is_file():
             _record(spec.paper_id, SOURCE_UNAVAILABLE, reason="no frozen source manifest")
             return
-        key = extraction_contract_key(settings, manifest_path)
+        key = extraction_contract_key(
+            settings, manifest_path, max_result_pages=spec.max_result_pages
+        )
         state, previous = paper_state(settings, spec, expected_key=key)
         if state == SKIPPED:
             _record(
@@ -437,6 +522,7 @@ def run_census(
         budget_client: Any = None
         superseded_ledger: str | None = None
         state_to_record: tuple[str, dict[str, Any]] | None = None
+        started = time.monotonic()
         try:
             _record_attempt(directory, attempts + 1)
             if previous is not None:
@@ -482,8 +568,16 @@ def run_census(
                     "wall_clock_seconds": summary.get("wall_clock_seconds"),
                 },
             )
-        except ProviderBudgetExhausted:
-            state_to_record = (BUDGET_STOPPED, {"reason": "per_paper_ceiling"})
+        except ProviderBudgetExhausted as error:
+            fields: dict[str, Any] = {"reason": "per_paper_ceiling", "budget_reason": error.reason}
+            try:
+                write_budget_stopped_run(spec=spec, settings=settings, error=error, started=started)
+                fields["run_json"] = "budget_stopped"
+            except Exception as write_error:  # noqa: BLE001 - the stop itself is recorded
+                fields["run_json"] = "unavailable"
+                fields["run_json_error_type"] = type(write_error).__name__
+            _restore_attempts(directory, attempts)
+            state_to_record = (BUDGET_STOPPED, fields)
         except Exception as error:  # noqa: BLE001 - a paper must not end the census
             state_to_record = (
                 FAILED,
@@ -524,12 +618,14 @@ def run_census(
 
     with counters_lock:
         snapshot = dict(counters)
+        stopped_papers = list(budget_stopped_papers)
     return {
         "schema_version": "census-run/0.1",
         "ordered": len(ordered),
         "counts": snapshot,
         "reported_cost_usd": round(guard.reported, 6),
         "stopped_for_budget": guard.stopped_for_budget,
+        "budget_stopped_papers": stopped_papers,
         "drained": draining.is_set(),
         "ledger": str(settings.output_root / "census-ledger.jsonl"),
         "progress": str(progress_path),

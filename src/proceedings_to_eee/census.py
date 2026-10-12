@@ -23,7 +23,8 @@ from proceedings_to_eee.io import sha256_file, write_json
 
 CENSUS_SCHEMA_VERSION = "paper-census/0.1"
 DEFAULT_PERSPECTIVE_ROLE = "Primary paper to inspect for reported evaluation results."
-DEFAULT_MAX_RESULT_PAGES = 8
+#: ``None`` reads every page; the corpus contract treats an integer as a cap.
+DEFAULT_MAX_RESULT_PAGES: int | None = None
 
 # PaperSpec.paper_id accepts only lowercase alphanumeric segments joined by hyphens, so
 # a census identifier such as `2020.acl-main.111` or `D17-1117` cannot be used directly.
@@ -275,7 +276,7 @@ def build_corpus_spec(
     *,
     corpus_id: str,
     description: str,
-    max_result_pages: int = DEFAULT_MAX_RESULT_PAGES,
+    max_result_pages: int | None = DEFAULT_MAX_RESULT_PAGES,
 ) -> CorpusSpec:
     """Project census rows onto the existing corpus contract, metadata excluded."""
 

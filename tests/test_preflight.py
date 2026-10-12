@@ -133,8 +133,11 @@ def test_preflight_cli_is_provider_free_and_writes_auditable_exact_bounds(
             "paper_id": "fixture-paper",
             "status": "success",
             "preflight": str(output / "fixture-paper" / "preflight.json"),
+            "page_count": 2,
             "selected_pages": [2],
             "result_blocks": 1,
+            "blocks_dropped_in_references": 0,
+            "tables_chunked": 0,
             "rows_planned": 3,
             "maximum_extraction_calls_before_verifier_or_origin": 8,
         }
@@ -158,22 +161,125 @@ def test_preflight_cli_is_provider_free_and_writes_auditable_exact_bounds(
         output / "fixture-paper" / "preflight.json",
         output / "fixture-paper" / "private" / "layout.json",
         output / "fixture-paper" / "private" / "result-blocks.json",
+        output / "fixture-paper" / "private" / "page-selection.json",
         output / "fixture-paper" / "private" / "row-enumeration-plan.json",
     )
     assert all(path.is_file() for path in expected_artifacts)
     persisted = read_json(output / "corpus-preflight.json")
     assert persisted["provider_calls_made"] == 0
     assert persisted["counts"] == {
+        "page_count": 2,
         "selected_pages": 1,
         "result_blocks": 1,
+        "blocks_dropped_in_references": 0,
+        "tables_chunked": 0,
         "rows_planned": 3,
         "unbatchable_rows": 0,
     }
     paper = read_json(output / "fixture-paper" / "preflight.json")
     assert paper["selection"]["selected_pages"][0]["page"] == 2
+    assert paper["selection"]["selected_pages"][0]["blocks_dropped_in_references"] == 0
+    assert paper["pages_selected"] == 1
     assert len(paper["selected_blocks"]) == 1
     assert [row["page"] for row in paper["row_plan"]["rows"]] == [2, 2, 2]
     assert all(item["sha256"] for item in paper["artifacts"].values())
+
+
+REFERENCES_PAGE = """References
+
+[1] A. Author. 2019. A synthetic title. In Proc. Conf., pages 11-22.
+[2] B. Author and C. Author. 2020. Another synthetic title. Journal 12(3):45-67.
+[3] D. Author. 2021. A third synthetic title. In Proc. Conf., pages 100-110.
+"""
+
+
+def _layout_with_references(source_id: str) -> PdfLayout:
+    return PdfLayout(
+        source_id=source_id,
+        parser="fixture-layout",
+        parser_version="fixture-layout/1",
+        page_count=3,
+        pages=[
+            _fragment(source_id=source_id, page=1, text="Introduction\n", score=0.0),
+            _fragment(source_id=source_id, page=2, text=PAGE, score=10.0),
+            _fragment(source_id=source_id, page=3, text=REFERENCES_PAGE, score=30.0),
+        ],
+    )
+
+
+def test_preflight_reads_every_page_and_reports_dropped_bibliography_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nprovider-free fixture\n")
+    corpus = CorpusSpec(
+        corpus_id="fixture-corpus",
+        description="fixture",
+        papers=[
+            PaperSpec(
+                paper_id="fixture-paper",
+                title="Fixture Paper",
+                year=2026,
+                venue="Fixture Venue",
+                pdf_path=str(pdf),
+                perspective_role="evaluated_system",
+            )
+        ],
+    )
+    settings = PipelineSettings(
+        project_root=tmp_path,
+        schema_path=tmp_path / "unused-schema.json",
+        schema_sha256="0" * 64,
+        output_root=tmp_path / "preflight",
+        model="not-used",
+    )
+    monkeypatch.setattr(
+        preflight_module,
+        "extract_pdf_layout",
+        lambda path, source_id: _layout_with_references(source_id),
+    )
+
+    report = preflight_corpus(corpus=corpus, settings=settings)
+
+    paper = report["paper_reports"][0]
+    assert paper["selection"]["max_result_pages"] is None
+    assert [item["page"] for item in paper["selection"]["selected_pages"]] == [1, 2, 3]
+    assert paper["pages_selected"] == 3
+    assert paper["blocks_dropped_in_references"] >= 1
+    assert paper["tables_chunked"] == 0
+    by_page = {item["page"]: item for item in paper["selection"]["selected_pages"]}
+    assert by_page[3]["result_blocks"] == 0
+    assert by_page[3]["blocks_dropped_in_references"] == paper["blocks_dropped_in_references"]
+    assert {block["page"] for block in paper["selected_blocks"]} == {2}
+    assert report["counts"]["page_count"] == 3
+    assert report["counts"]["blocks_dropped_in_references"] == paper["blocks_dropped_in_references"]
+    page_selection = read_json(
+        settings.output_root / "fixture-paper" / "private" / "page-selection.json"
+    )
+    assert page_selection["selected_pages"] == [1, 2, 3]
+    assert page_selection["blocks_dropped_in_references"] == paper["blocks_dropped_in_references"]
+
+
+@pytest.mark.parametrize("cap", [None, 1])
+def test_preflight_cli_records_the_block_cap_it_was_given(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cap: int | None
+) -> None:
+    corpus_path = _write_local_corpus(tmp_path)
+    output = tmp_path / "preflight"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        preflight_module, "extract_pdf_layout", lambda path, source_id: _layout(source_id)
+    )
+    arguments = ["preflight-corpus", str(corpus_path), "--output", str(output)]
+    if cap is not None:
+        arguments.extend(["--max-blocks-per-page", str(cap)])
+
+    result = CliRunner().invoke(app, arguments)
+
+    assert result.exit_code == 0, result.output
+    paper = read_json(output / "fixture-paper" / "preflight.json")
+    assert paper["result_block_segmentation"]["max_blocks_per_page"] == cap
 
 
 def test_preflight_does_not_infer_cost_without_user_assumptions(

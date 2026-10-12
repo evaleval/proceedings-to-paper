@@ -33,7 +33,7 @@ class ResultBlock(StrictModel):
     source.
     """
 
-    schema_version: str = "result-block/0.3"
+    schema_version: str = "result-block/0.4"
     block_id: str
     source_id: str
     page: int = Field(ge=1)
@@ -58,9 +58,16 @@ class ResultBlock(StrictModel):
     signal_kinds: list[str]
     data_row_count: int = Field(ge=0)
     overlap_with_previous_lines: int = Field(default=0, ge=0)
+    chunk_index: int = Field(default=1, ge=1)
+    chunk_count: int = Field(default=1, ge=1)
+    header_repeated: bool = False
 
     @model_validator(mode="after")
     def validate_ranges_and_digest(self) -> ResultBlock:
+        if self.chunk_index > self.chunk_count:
+            raise ValueError("chunk_index must not exceed chunk_count")
+        if self.header_repeated and (self.chunk_index == 1 or not self.context_text):
+            raise ValueError("header_repeated requires a later chunk with leading context")
         has_column_range = (
             self.source_column_start is not None or self.source_column_end is not None
         )
@@ -129,22 +136,35 @@ class ResultBlock(StrictModel):
 
 @dataclass(frozen=True, slots=True)
 class ResultBlockConfig:
-    """Deterministic segmentation and prompt-budget limits."""
+    """Deterministic segmentation and prompt-budget limits.
 
-    max_lines: int = 40
+    A table longer than ``max_data_rows`` is chunked by that row count, and a chunk also
+    closes before its body would carry more than ``max_numeric_cells`` numeric tokens, so
+    the expected model output per call stays bounded by cells rather than by rows: a
+    wide table gets fewer rows per chunk than a narrow one. ``max_lines`` must leave room
+    for such a chunk behind its repeated leading context and a trailing caption of up to
+    ``context_lines``.
+    """
+
+    max_lines: int = 60
     max_characters: int = 6_000
     context_lines: int = 8
     trailing_context_lines: int = 2
     overlap_lines: int = 3
     signal_gap_lines: int = 3
     max_blank_gap: int = 1
-    max_data_rows: int | None = 6
+    max_data_rows: int | None = 14
+    max_numeric_cells: int | None = 24
     min_signal_score: float = 1.5
     max_blocks_per_page: int | None = None
     detect_parallel_columns: bool = True
     min_column_gutter_width: int = 3
     min_parallel_lines: int = 4
     max_column_analysis_width: int = 240
+    # How far above or below a table its caption may sit, in page lines, for both the
+    # region index and the block context. Captions beyond the context window are still
+    # carried into the block when they lie within this distance.
+    caption_distance_lines: int = 12
 
     def __post_init__(self) -> None:
         if self.max_lines < 2:
@@ -155,6 +175,8 @@ class ResultBlockConfig:
             raise ValueError("context_lines must be non-negative and smaller than max_lines")
         if self.trailing_context_lines < 0:
             raise ValueError("trailing_context_lines must be non-negative")
+        if self.caption_distance_lines < 0:
+            raise ValueError("caption_distance_lines must be non-negative")
         if not 0 <= self.overlap_lines < self.max_lines:
             raise ValueError("overlap_lines must be non-negative and smaller than max_lines")
         if self.signal_gap_lines < 0 or self.max_blank_gap < 0:
@@ -163,6 +185,15 @@ class ResultBlockConfig:
             raise ValueError("min_signal_score must be positive")
         if self.max_data_rows is not None and self.max_data_rows < 1:
             raise ValueError("max_data_rows must be positive when provided")
+        if self.max_numeric_cells is not None and self.max_numeric_cells < 1:
+            raise ValueError("max_numeric_cells must be positive when provided")
+        if (
+            self.max_data_rows is not None
+            and self.max_lines - 2 * self.context_lines < self.max_data_rows
+        ):
+            raise ValueError(
+                "max_lines must fit max_data_rows behind leading and trailing context lines"
+            )
         if self.max_blocks_per_page is not None and self.max_blocks_per_page < 1:
             raise ValueError("max_blocks_per_page must be positive when provided")
         if self.min_column_gutter_width < 2:
@@ -263,6 +294,9 @@ class _BlockDraft:
     score: float
     signal_kinds: tuple[str, ...]
     data_row_count: int
+    chunk_index: int = 1
+    chunk_count: int = 1
+    header_repeated: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -818,7 +852,12 @@ def _expanded_end(
 
 
 def _trim_context_to_limits(
-    lines: list[str], start: int, end: int, config: ResultBlockConfig
+    lines: list[str],
+    start: int,
+    end: int,
+    config: ResultBlockConfig,
+    *,
+    reaches_caption: bool = False,
 ) -> tuple[int, int] | None:
     while start <= end and not lines[start].strip():
         start += 1
@@ -826,7 +865,11 @@ def _trim_context_to_limits(
         end -= 1
     if start > end:
         return None
-    start = max(start, end - config.context_lines + 1)
+    # A claimed caption may stand beyond the ordinary window, but no farther than the
+    # caption distance on top of it, so a long value-free header run between the caption
+    # and the first data row cannot grow the context without bound.
+    reach = config.context_lines + (config.caption_distance_lines if reaches_caption else 0)
+    start = max(start, end - reach + 1)
     # Leave room for body text and a possible caption below the table.
     context_budget = max(1, config.max_characters // 3)
     while start < end and len(_join_lines(lines, start, end)) > context_budget:
@@ -858,6 +901,139 @@ def _trailing_caption_range(
     return caption_start, end
 
 
+_STRONG_HEADING = re.compile(r"^\s*\d+(?:\.\d+)*[.)]?\s+[A-Z]")
+
+
+def _strong_heading_line(feature: _LineFeatures) -> bool:
+    """A numbered or all-caps heading. Title-cased lines are too often table cells."""
+
+    if not feature.heading:
+        return False
+    stripped = feature.text.strip()
+    letters = [character for character in stripped if character.isalpha()]
+    return bool(_STRONG_HEADING.match(stripped)) or (
+        len(stripped.split()) >= 2 and all(character.isupper() for character in letters)
+    )
+
+
+def _extend_over_headers(lines: list[str], index: int, step: int, config: ResultBlockConfig) -> int:
+    """Walk from a data edge across the value-free aligned rows a table carries."""
+
+    edge = index
+    blanks = 0
+    probe = index + step
+    while 0 <= probe < len(lines):
+        if not lines[probe].strip():
+            blanks += 1
+            if blanks > config.max_blank_gap:
+                break
+        elif _is_table_header_line(lines[probe]):
+            blanks = 0
+            edge = probe
+        else:
+            break
+        probe += step
+    return edge
+
+
+def _table_edges(
+    lines: list[str],
+    features: list[_LineFeatures],
+    cluster: _Cluster,
+    config: ResultBlockConfig,
+) -> tuple[int, int] | None:
+    """First and last line of the physical table in a cluster, headers included."""
+
+    tabular = [index for index in cluster.signal_indices if features[index].is_tabular_data]
+    if not tabular:
+        return None
+    return (
+        _extend_over_headers(lines, tabular[0], -1, config),
+        _extend_over_headers(lines, tabular[-1], 1, config),
+    )
+
+
+def _caption_claims(
+    lines: list[str],
+    features: list[_LineFeatures],
+    clusters: list[_Cluster],
+    config: ResultBlockConfig,
+) -> dict[int, tuple[int, str]]:
+    """Give each caption line to its nearest table cluster, as the region index does.
+
+    Returns cluster index -> (caption line, side). The nearest pair wins, each caption
+    and each table is claimed at most once, and table data or a section heading between
+    the two rules a pair out. A figure caption stands below its figure, so it never
+    claims a table from above; ties prefer a caption below the table, the common
+    placement in the development corpus.
+    """
+
+    captions = [feature.index for feature in features if feature.caption]
+    pairs: list[tuple[int, bool, int, int, int, str]] = []
+    for cluster_index, cluster in enumerate(clusters):
+        edges = _table_edges(lines, features, cluster, config)
+        if edges is None:
+            continue
+        top, bottom = edges
+        for caption in captions:
+            if caption < top:
+                distance, side, between = top - caption, "leading", range(caption + 1, top)
+            elif caption > bottom:
+                distance, side, between = caption - bottom, "trailing", range(bottom + 1, caption)
+            else:
+                continue
+            figure = features[caption].text.strip().casefold().startswith("fig")
+            if (
+                distance > config.caption_distance_lines
+                or (figure and side != "trailing")
+                or any(
+                    features[index].is_tabular_data or _strong_heading_line(features[index])
+                    for index in between
+                )
+            ):
+                continue
+            pairs.append((distance, side != "trailing", top, caption, cluster_index, side))
+    claims: dict[int, tuple[int, str]] = {}
+    claimed_captions: set[int] = set()
+    for *_, caption, cluster_index, side in sorted(pairs):
+        if cluster_index in claims or caption in claimed_captions:
+            continue
+        claims[cluster_index] = (caption, side)
+        claimed_captions.add(caption)
+    return claims
+
+
+def _distant_caption(
+    lines: list[str],
+    features: list[_LineFeatures],
+    clusters: list[_Cluster],
+    cluster_index: int,
+    expanded_start: int,
+    expanded_end: int,
+    config: ResultBlockConfig,
+) -> tuple[int, str] | None:
+    """The caption this cluster's table owns when the context windows did not reach it."""
+
+    if any(features[index].caption for index in range(expanded_start, expanded_end + 1)):
+        return None
+    return _caption_claims(lines, features, clusters, config).get(cluster_index)
+
+
+def _distant_trailing_caption_range(
+    lines: list[str],
+    features: list[_LineFeatures],
+    caption_start: int,
+    config: ResultBlockConfig,
+) -> tuple[int, int]:
+    """Trailing context for a caption below the table but beyond the trailing window."""
+
+    end = _expanded_end(features, len(lines) - 1, caption_start, config.trailing_context_lines)
+    context_budget = max(1, config.max_characters // 3)
+    while end > caption_start and len(_join_lines(lines, caption_start, end)) > context_budget:
+        end -= 1
+    return caption_start, end
+
+
 def _join_lines(lines: list[str], start: int, end: int) -> str:
     return "\n".join(lines[start : end + 1]).rstrip() + "\n"
 
@@ -870,23 +1046,29 @@ def _chunk_end(
     max_lines: int,
     max_characters: int,
     max_data_rows: int | None,
+    max_numeric_cells: int | None = None,
 ) -> int:
     end = start
     characters = len(lines[start]) + 1
     data_rows = int(features[start].is_tabular_data)
+    cells = features[start].numeric_count
     while end < final_end:
         next_characters = len(lines[end + 1]) + 1
         next_is_data = int(features[end + 1].is_tabular_data)
+        next_cells = features[end + 1].numeric_count
         exceeds_data_rows = max_data_rows is not None and data_rows + next_is_data > max_data_rows
+        exceeds_cells = max_numeric_cells is not None and cells + next_cells > max_numeric_cells
         if (
             end - start + 2 > max_lines
             or characters + next_characters > max_characters
             or exceeds_data_rows
+            or exceeds_cells
         ):
             break
         end += 1
         characters += next_characters
         data_rows += next_is_data
+        cells += next_cells
 
     # Prefer a nearby blank boundary for prose, but do not sacrifice more than 25%
     # of the available chunk. Dense tables normally contain no such boundary.
@@ -943,6 +1125,26 @@ def _drafts_for_cluster(
         lines, features, last_data, expanded_end, config
     )
     body_end = trailing_context_range[0] - 1 if trailing_context_range is not None else expanded_end
+    # The window rules above are unchanged. A table whose caption lies beyond them still
+    # reaches the extractor with that caption: the leading context grows down from the
+    # caption, or the caption becomes the trailing context on its own. When the caption
+    # and the header run below it exceed the context reach, the ordinary window stands.
+    distant = _distant_caption(
+        lines, features, clusters, cluster_index, expanded_start, expanded_end, config
+    )
+    if distant is not None and first_data is not None:
+        caption_index, side = distant
+        if side == "leading":
+            extended = _trim_context_to_limits(
+                lines, caption_index, first_data - 1, config, reaches_caption=True
+            )
+            if extended is not None and extended[0] == caption_index:
+                context_range = extended
+                body_start = first_data
+        else:
+            trailing_context_range = _distant_trailing_caption_range(
+                lines, features, caption_index, config
+            )
     while body_start < body_end and not lines[body_start].strip():
         body_start += 1
     while body_end > body_start and not lines[body_end].strip():
@@ -983,6 +1185,7 @@ def _drafts_for_cluster(
             body_line_limit,
             body_character_limit,
             config.max_data_rows,
+            config.max_numeric_cells,
         )
         overlap = 0 if previous_end is None else max(0, previous_end - cursor + 1)
         feature_slice = features[cursor : end + 1]
@@ -1031,7 +1234,23 @@ def _drafts_for_cluster(
             max(overlap_start, tabular_indexes[-1] + 1) if tabular_indexes else overlap_start
         )
         cursor = next_cursor
-    return drafts
+    if len(drafts) < 2:
+        return drafts
+    # Every chunk repeats the same leading context, so a header row found there is
+    # genuinely repeated for the later chunks rather than adjacent to their rows.
+    header_in_context = context_range is not None and any(
+        _is_table_header_line(lines[index])
+        for index in range(context_range[0], context_range[1] + 1)
+    )
+    return [
+        replace(
+            draft,
+            chunk_index=ordinal,
+            chunk_count=len(drafts),
+            header_repeated=ordinal > 1 and header_in_context,
+        )
+        for ordinal, draft in enumerate(drafts, start=1)
+    ]
 
 
 def _text_digest(context_text: str, body_text: str, trailing_context_text: str) -> str:
@@ -1133,6 +1352,9 @@ def _materialize_block(
         signal_kinds=list(draft.signal_kinds),
         data_row_count=draft.data_row_count,
         overlap_with_previous_lines=draft.overlap,
+        chunk_index=draft.chunk_index,
+        chunk_count=draft.chunk_count,
+        header_repeated=draft.header_repeated,
     )
 
 

@@ -243,7 +243,7 @@ def test_freeze_corpus_cli_exit_code_reflects_failures(
             "freeze-corpus",
             str(corpus_path),
             "--schema-path",
-            str(Path("schemas/eee-0.2.2/eval.schema.json").resolve()),
+            str(Path("schemas/eee-0.3.0/eval.schema.json").resolve()),
             "--output",
             str(tmp_path / "output"),
         ],

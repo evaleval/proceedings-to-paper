@@ -46,6 +46,15 @@ _REFERENCE_SECTION_HEADING = re.compile(
 )
 
 
+def reference_heading_line(text: str) -> int | None:
+    """Return the one-based line of the first page-local bibliography heading, if any."""
+
+    match = _REFERENCE_SECTION_HEADING.search(text)
+    if match is None:
+        return None
+    return text.count("\n", 0, match.start()) + 1
+
+
 def _version(binary: str) -> str:
     completed = subprocess.run(
         [binary, "-v"], check=True, text=True, capture_output=True, timeout=15
@@ -117,14 +126,17 @@ def _reference_fraction(page_index: object, region_kind: type) -> float:
     return reference_lines / content_lines
 
 
-def select_result_pages(layout: PdfLayout, limit: int = 12) -> list[PageFragment]:
+def select_result_pages(layout: PdfLayout, limit: int | None = None) -> list[PageFragment]:
     """Select result-rich pages using the same structural signals as extraction.
 
-    Raw numeric density over-ranks reference lists and can miss qualitative or
-    graphically rendered tables. Result blocks add aligned-row, metric, caption,
-    and table-context signals while remaining paper-agnostic.
+    Without a limit every page is returned in page order. With one, raw numeric
+    density would over-rank reference lists and miss qualitative or graphically
+    rendered tables, so result blocks add aligned-row, metric, caption, and
+    table-context signals while remaining paper-agnostic.
     """
 
+    if limit is None:
+        return sorted(layout.pages, key=lambda page: page.page)
     if limit < 1:
         raise ValueError("page selection limit must be positive")
     from proceedings_to_eee.extraction.region_index import RegionKind, build_region_index
