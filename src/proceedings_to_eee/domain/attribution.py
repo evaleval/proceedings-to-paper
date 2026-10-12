@@ -98,11 +98,39 @@ class OriginExportPolicy(StrEnum):
         return basis.exports_under_positive_only
 
 
+class PaperKind(StrEnum):
+    """What the frozen manifest title says the paper is, as a prior for origin cues."""
+
+    SHARED_TASK_SYSTEM_PAPER = "shared_task_system_paper"
+    """A team describes its own submission: a `<team> at <venue>` or `<team>@<venue>` title."""
+
+    OVERVIEW_PAPER = "overview_paper"
+    """Organisers report every participant's results."""
+
+    OTHER = "other"
+    """The title implies nothing about who the reported rows belong to."""
+
+
+class PaperContext(StrictModel):
+    """Deterministic paper-level prior read from the source manifest, never from a model.
+
+    A paper-scoped signal may only abstain. The context lets the resolver record which
+    rows of a ranked table do not even name the team the title names; it decides nothing.
+    """
+
+    title: str | None = None
+    paper_kind: PaperKind = PaperKind.OTHER
+    team_name: str | None = Field(default=None, min_length=1)
+
+
 #: Rule-id prefix the reviewed-export workflow stamps on a human-confirmed verdict.
 REVIEWED_ORIGIN_RULE_PREFIX = "reviewed_origin:"
 
 #: Rule id the deterministic resolver emits when a completed cue check found nothing.
 NO_CUE_RULE_ID = "no_cue"
+#: The row label names the paper itself ("Ours"). Row-scoped, so table-level cues
+#: recorded beside it do not hold the row back; it still never asserts production.
+SELF_REFERENCE_RULE_ID = "self_reference_row"
 
 #: `ClaimType.PRIMARY_RESULT` as a plain string. Importing the enum here would make
 #: domain.attribution depend on domain.status's claim axis, which this module documents
@@ -150,7 +178,7 @@ class AttributionVerdict(StrictModel):
         if claim_type != PRIMARY_RESULT_CLAIM_TYPE:
             return OriginBasis.NONE
         if self.state is AttributionState.NO_SIGNAL:
-            if self.rule_id == NO_CUE_RULE_ID:
+            if self.rule_id in {NO_CUE_RULE_ID, SELF_REFERENCE_RULE_ID}:
                 return OriginBasis.MODEL_ASSERTED_PRIMARY_NO_EXTERNAL_CUE
             return OriginBasis.NONE
         # UNRESOLVED. Cues that fired mean the check ran and could not decide, which is

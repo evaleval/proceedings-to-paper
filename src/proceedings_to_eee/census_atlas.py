@@ -33,7 +33,10 @@ from typing import Any
 
 from proceedings_to_eee.domain.observation import MetricSpec
 from proceedings_to_eee.io import write_json
-from proceedings_to_eee.resolution.metrics import metric_canonical_source
+from proceedings_to_eee.resolution.metrics import (
+    REGISTRY_BACKED_SOURCES,
+    metric_canonical_source,
+)
 
 ATLAS_SCHEMA_VERSION = "census-atlas/0.1"
 
@@ -399,9 +402,10 @@ def _observation_row(
         spec = MetricSpec(raw_name=raw_metric_name, canonical_id=metric.get("canonical_id"))
         canonical_source = metric_canonical_source(spec)
         # A concordant hit is registry-backed too: a short alias plus the extractor's
-        # own canonical id naming the same metric. The source column keeps the two
-        # apart for anyone who wants plain hits only.
-        registry_resolved = canonical_source in {"registry", "registry_concordant"}
+        # own canonical id naming the same metric, as is a hit in the vendored EEE
+        # registry snapshot. The source column keeps them apart for anyone who wants
+        # plain local hits only.
+        registry_resolved = canonical_source in REGISTRY_BACKED_SOURCES
     else:
         canonical_source = "none"
         registry_resolved = False

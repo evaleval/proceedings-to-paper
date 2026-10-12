@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from test_origin_pipeline import _origin_fixture, _OriginPipelineClient
+from test_origin_pipeline import METHODS_POSITIVE, _origin_fixture, _OriginPipelineClient, _page
 from typer.testing import CliRunner
 
 from proceedings_to_eee.cli import app
@@ -46,7 +46,13 @@ from proceedings_to_eee.reporting.public_development_summary import (
     build_public_development_summary,
     write_public_development_summary,
 )
-from proceedings_to_eee.resources import EEE_SCHEMA_SHA256
+from proceedings_to_eee.resolution.attribution import load_lexicon
+from proceedings_to_eee.resources import (
+    ATTRIBUTION_LEXICON_PATHS,
+    DEFAULT_ATTRIBUTION_LEXICON_PATH,
+    EEE_SCHEMA_SHA256_BY_VERSION,
+    EEE_SCHEMA_VERSION,
+)
 from proceedings_to_eee.reviewed_export.models import (
     DecisionAuthority,
     DecisionStatus,
@@ -79,7 +85,7 @@ class _FiveStageRowClient(_OriginPipelineClient):
         if kwargs["schema_name"] != "paper_table_row_dispositions":
             return response
         row_ids = re.findall(r'"row_id": "(trow_[0-9a-f]+)"', kwargs["user"])
-        assert len(row_ids) == 2
+        assert row_ids
         observation = response.payload["observations"][0]
         observation = {
             **observation,
@@ -92,6 +98,8 @@ class _FiveStageRowClient(_OriginPipelineClient):
                 }
             ],
         }
+        # The first planned row carries the fixture result; any further row of the
+        # layout is a non-result row, so a layout with more rows still gets one plan.
         payload = {
             "dispositions": [
                 {
@@ -100,12 +108,15 @@ class _FiveStageRowClient(_OriginPipelineClient):
                     "observations": [observation],
                     "note": None,
                 },
-                {
-                    "row_id": row_ids[1],
-                    "disposition": "not_result",
-                    "observations": [],
-                    "note": "local fixture row",
-                },
+                *[
+                    {
+                        "row_id": row_id,
+                        "disposition": "not_result",
+                        "observations": [],
+                        "note": "local fixture row",
+                    }
+                    for row_id in row_ids[1:]
+                ],
             ],
             "warnings": [],
         }
@@ -186,6 +197,23 @@ RUNNER = CliRunner()
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+# The fixture results table with a rank column and an official-results caption: every
+# row in it carries the table-level cues, and a shared-task title adds the prior.
+RANKED_RESULTS = (
+    "3 Results\n"
+    "Table 1: AUC proportion on Dataset A test split, official results of the shared task\n"
+    "Rank  System                    AUC\n"
+    "1     System A                 0.80\n"
+    "2     System B                 0.70\n"
+    "System A split test Dataset A AUC proportion 0.80\n"
+    "System A Dataset A AUC proportion 0.80 operationalization Private source evidence "
+    "phrase describing the fixture operationalization.\n"
+    "System A Dataset A AUC proportion 0.80 operationalization We evaluate System A on "
+    "Dataset A using AUC.\n"
+)
+SHARED_TASK_TITLE = "Team Juniper at SemEval-2030 Task 9: Invented Detection"
+
+
 def _five_stage_run_root(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -197,8 +225,28 @@ def _five_stage_run_root(
     corpus_id: str = "five-stage-development",
     client: Any | None = None,
     resume_from_checkpoints: bool = False,
+    title: str | None = None,
+    results_page: str | None = None,
+    lexicon_path: Path | None = None,
 ) -> Path:
     spec, settings = _origin_fixture(monkeypatch, tmp_path)
+    if results_page is not None:
+        layout = PdfLayout(
+            source_id="src_end_to_end",
+            parser="fixture",
+            parser_version="fixture/1",
+            page_count=2,
+            pages=[_page(METHODS_POSITIVE, 1), _page(results_page, 2)],
+        )
+        monkeypatch.setattr(
+            "proceedings_to_eee.pipeline.extract_pdf_layout", lambda path, source: layout
+        )
+    if title is not None:
+        # The frozen manifest is what the pipeline reads the title from, so the fixture
+        # manifest written ahead of the run has to carry it as well.
+        spec = spec.model_copy(update={"title": title})
+        manifest_path = settings.output_root / spec.paper_id / "source-manifest.json"
+        write_json(manifest_path, {**read_json(manifest_path), "title": title})
     settings = replace(
         settings,
         row_enumeration_enabled=True,
@@ -213,18 +261,35 @@ def _five_stage_run_root(
         papers=[spec],
     )
     selected_client = client or _FiveStageRowClient(client_mode)
-    run_corpus(
-        corpus=corpus,
-        settings=settings,
-        client=selected_client,
-    )
-    if resume_from_checkpoints:
-        run_corpus(corpus=corpus, settings=settings, client=selected_client)
+    # The lexicon is swapped only while the run is produced, so the replay below sees
+    # the current default and has to pick the recorded one on its own.
+    with pytest.MonkeyPatch.context() as production:
+        if lexicon_path is not None:
+            production.setattr(
+                "proceedings_to_eee.validation.candidates.load_lexicon",
+                lambda: load_lexicon(lexicon_path),
+            )
+        run_corpus(
+            corpus=corpus,
+            settings=settings,
+            client=selected_client,
+        )
+        if resume_from_checkpoints:
+            run_corpus(corpus=corpus, settings=settings, client=selected_client)
     if not sealed:
         return settings.output_root
     sealed_root = tmp_path / ("sealed-five-stage" if verifier_enabled else "sealed-tuple-review")
     seal_run_tree(settings.output_root, sealed_root)
     return sealed_root
+
+
+def _stored_verdicts(run_root: Path) -> list[dict[str, Any]]:
+    path = run_root / "end-to-end-paper" / "observations.jsonl"
+    return [
+        json.loads(line)["attribution"]
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 def _all_mapping_keys(value: object) -> set[str]:
@@ -400,6 +465,8 @@ def _call(*, row: bool = False) -> ProviderCall:
 def _run_root(
     tmp_path: Path,
     eligible_candidate: CandidateObservation,
+    *,
+    schema_version: str = EEE_SCHEMA_VERSION,
 ) -> Path:
     root = tmp_path / "development-run"
     paper = root / "fixture-paper"
@@ -651,7 +718,10 @@ def _run_root(
             "git_available": True,
             "source_tree_sha256": "2" * 64,
         },
-        "eee_schema": {"version": "0.2.2", "sha256": EEE_SCHEMA_SHA256},
+        "eee_schema": {
+            "version": schema_version,
+            "sha256": EEE_SCHEMA_SHA256_BY_VERSION.get(schema_version, "0" * 64),
+        },
         "counts": counts,
     }
     write_json(paper / "run.json", run)
@@ -662,6 +732,7 @@ def _run_root(
             encoding="utf-8"
         )
     )
+    eee_record["schema_version"] = schema_version
     eee_result = eee_record["evaluation_results"][0]
     eee_result["evaluation_result_id"] = exported.observation_id
     eee_result["score_details"]["details"]["candidate_observation_id"] = exported.observation_id
@@ -747,6 +818,30 @@ def test_public_development_summary_is_aggregate_bound_and_private_free(
     assert "private source quotation" not in serialized
     assert "private-provider-request-id" not in serialized
     assert str(tmp_path) not in serialized
+
+
+def test_public_development_summary_replays_a_run_against_the_schema_it_recorded(
+    tmp_path: Path,
+    eligible_candidate: CandidateObservation,
+) -> None:
+    run_root = _run_root(tmp_path, eligible_candidate, schema_version="0.2.2")
+
+    summary = build_public_development_summary(run_root)
+
+    assert summary["run_binding"]["eee_schema"] == {
+        "version": "0.2.2",
+        "sha256": EEE_SCHEMA_SHA256_BY_VERSION["0.2.2"],
+    }
+
+
+def test_public_development_summary_refuses_a_schema_it_does_not_vendor(
+    tmp_path: Path,
+    eligible_candidate: CandidateObservation,
+) -> None:
+    run_root = _run_root(tmp_path, eligible_candidate, schema_version="0.1.0")
+
+    with pytest.raises(PublicDevelopmentSummaryError):
+        build_public_development_summary(run_root)
 
 
 def test_public_development_summary_refuses_non_positive_origin_export(
@@ -1490,3 +1585,77 @@ def test_current_summary_rejects_reviewed_result_from_another_sealed_source(
             reviewed_derived_root=derived_root,
             review_root=review_root,
         )
+
+
+def test_current_summary_replays_the_paper_context_the_run_attributed_under(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A ranked table in a `<team> at <venue>` paper records the prior's cue in the
+    run; the replay must read the same title from the manifest or the verdicts differ.
+
+    The origin stage rewrites the verdict of every candidate it assesses, so the stages
+    behind it stay off to keep the deterministic verdict on the ledger."""
+
+    run_root = _five_stage_run_root(
+        monkeypatch,
+        tmp_path,
+        verifier_enabled=False,
+        title=SHARED_TASK_TITLE,
+        results_page=RANKED_RESULTS,
+    )
+    stored = {cue["cue_id"] for verdict in _stored_verdicts(run_root) for cue in verdict["cues"]}
+    assert {"rank_column", "leaderboard_caption", "foreign_team_row"} <= stored
+
+    summary = build_public_development_summary(run_root)
+
+    assert summary["projection_mode"] == "sealed_current_five_stage_receipt"
+    assert summary["outputs"]["attribution_state_counts"] == {"unresolved": 1}
+
+
+def test_current_summary_replays_under_the_lexicon_the_run_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A run attributed under v0 replays under v0 although the default is newer: the
+    ranked table would otherwise gain cues the run never recorded."""
+
+    run_root = _five_stage_run_root(
+        monkeypatch,
+        tmp_path,
+        verifier_enabled=False,
+        title=SHARED_TASK_TITLE,
+        results_page=RANKED_RESULTS,
+        lexicon_path=ATTRIBUTION_LEXICON_PATHS["attribution-cues-v0"],
+    )
+    verdicts = _stored_verdicts(run_root)
+    assert {verdict.get("lexicon_id") for verdict in verdicts} == {"attribution-cues-v0"}
+    assert not any(verdict["cues"] for verdict in verdicts)
+    assert load_lexicon().lexicon_id != "attribution-cues-v0"
+
+    summary = build_public_development_summary(run_root)
+
+    assert summary["projection_mode"] == "sealed_current_five_stage_receipt"
+    assert summary["outputs"]["attribution_state_counts"] == {"no_signal": 1}
+
+
+def test_current_summary_refuses_a_run_whose_lexicon_is_not_shipped(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    foreign = tmp_path / "attribution-cues-v9.yaml"
+    foreign.write_text(
+        DEFAULT_ATTRIBUTION_LEXICON_PATH.read_text(encoding="utf-8").replace(
+            "lexicon_id: attribution-cues-v2", "lexicon_id: attribution-cues-v9"
+        ),
+        encoding="utf-8",
+    )
+    run_root = _five_stage_run_root(
+        monkeypatch, tmp_path, verifier_enabled=False, lexicon_path=foreign
+    )
+    assert {verdict.get("lexicon_id") for verdict in _stored_verdicts(run_root)} == {
+        "attribution-cues-v9"
+    }
+
+    with pytest.raises(PublicDevelopmentSummaryError, match="attribution-cues-v9"):
+        build_public_development_summary(run_root)

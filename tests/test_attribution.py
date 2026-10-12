@@ -3,16 +3,31 @@ from __future__ import annotations
 import hashlib
 import json
 
-from proceedings_to_eee.domain.attribution import AttributionState, AttributionVerdict
+import pytest
+
+from proceedings_to_eee.domain.attribution import (
+    AttributionState,
+    AttributionVerdict,
+    OriginBasis,
+    OriginExportPolicy,
+    PaperContext,
+    PaperKind,
+)
 from proceedings_to_eee.domain.observation import CandidateObservation
 from proceedings_to_eee.domain.status import ClaimType, ExportStatus
 from proceedings_to_eee.extraction.llm_schema import provider_json_schema
 from proceedings_to_eee.extraction.pdf_layout import PageFragment, PdfLayout
 from proceedings_to_eee.extraction.region_index import build_page_region_index
 from proceedings_to_eee.resolution.attribution import (
+    PAPER_CONTEXT_CUE_SCOPE,
     attribute_candidate,
+    has_table_level_cue,
     load_lexicon,
+    load_recorded_lexicon,
+    paper_context_from_title,
+    row_names_team,
 )
+from proceedings_to_eee.resources import ATTRIBUTION_LEXICON_PATHS, DEFAULT_ATTRIBUTION_LEXICON_PATH
 from proceedings_to_eee.validation.candidates import _route_attribution, validate_candidates
 
 # Invented table with one external comparator, one paper-owned result, and a caption
@@ -109,7 +124,8 @@ def test_external_comparator_is_attributed_to_its_own_source() -> None:
     )
     assert verdict.state is AttributionState.EXTERNALLY_SOURCED
     assert verdict.rule_id == "row_scoped_foreign_cue"
-    assert [cue.cue_id for cue in verdict.cues] == ["leaderboard"]
+    # The decisive row cue leads; the caption cue is recorded behind it, never deciding.
+    assert [cue.cue_id for cue in verdict.cues] == ["leaderboard", "caption_reported"]
     assert verdict.demotes
 
 
@@ -348,3 +364,318 @@ def test_attribution_does_not_move_observation_ids() -> None:
     assert candidate.attribution is not None
     assert candidate.attribution.state is AttributionState.EXTERNALLY_SOURCED
     assert candidate.stable_id() == before
+
+
+# ----------------------------------------------------------------------------------
+# Lexicon v1: table-level abstaining cues and the paper-context prior
+# ----------------------------------------------------------------------------------
+
+# A ranked results table. The header carries a rank column and the caption describes the
+# official standings; neither says which row is the paper's own.
+RANKED_PAGE = """Table 3: Official results of the shared task, top-5 systems.
+
+     Rank    Team                     F1
+     1       Alpha Team              0.83
+     2       Beta Team               0.81
+     3       Ours                    0.79
+     4       Run 1                   0.75
+"""
+
+# The same systems without a rank column or a standings caption: no table-level cue.
+PLAIN_PAGE = """Table 3: Results per system.
+
+     Alpha Team              0.83
+     Beta Team               0.81
+     Ours                    0.79
+"""
+
+SHARED_TASK_CONTEXT = paper_context_from_title(
+    "Alpha Team at SemEval-2030 Task 9: Detecting Invented Phenomena"
+)
+OVERVIEW_CONTEXT = paper_context_from_title("Overview of the Invented Phenomena Shared Task")
+
+
+def _attribute_in_context(
+    page_text: str, quote: str, row: str, value: str, context: PaperContext | None
+) -> AttributionVerdict:
+    fragment = _page(page_text, 3)
+    return attribute_candidate(
+        _candidate(quote, row, value, page=3),
+        build_page_region_index(fragment),
+        fragment,
+        load_lexicon(),
+        context,
+    )
+
+
+def test_table_level_cues_are_recorded_on_a_trusted_row_and_abstain() -> None:
+    verdict = _attribute_in_context(RANKED_PAGE, "Beta Team 0.81", "Beta Team", "0.81", None)
+
+    assert verdict.state is AttributionState.UNRESOLVED
+    assert verdict.rule_id == "weak_cue_recorded"
+    assert {cue.cue_id for cue in verdict.cues} == {"rank_column", "leaderboard_caption"}
+    assert {cue.scope for cue in verdict.cues} == {"table_header", "caption"}
+    assert has_table_level_cue(verdict, load_lexicon())
+    # A cue that fired is doubt, not silence: no basis under either policy.
+    assert verdict.origin_basis(ClaimType.PRIMARY_RESULT) is OriginBasis.NONE
+    assert not OriginExportPolicy.TIERED.permits(verdict.origin_basis(ClaimType.PRIMARY_RESULT))
+
+
+def test_table_level_cues_are_recorded_on_the_untrusted_row_path_without_changing_state() -> None:
+    verdict = _attribute_in_context(RANKED_PAGE, "Beta Team 0.81", "Gamma Team", "0.81", None)
+
+    assert verdict.state is AttributionState.UNRESOLVED
+    assert verdict.rule_id == "row_unresolved"
+    assert {cue.cue_id for cue in verdict.cues} == {"rank_column", "leaderboard_caption"}
+
+
+def test_a_decisive_row_cue_still_decides_inside_a_ranked_table() -> None:
+    page = RANKED_PAGE.replace("Beta Team   ", "Beta et al. ")
+    verdict = _attribute_in_context(page, "Beta et al. 0.81", "Beta et al.", "0.81", None)
+
+    assert verdict.state is AttributionState.EXTERNALLY_SOURCED
+    assert verdict.cues[0].cue_id == "attributed_author"
+    assert {cue.cue_id for cue in verdict.cues[1:]} == {"rank_column", "leaderboard_caption"}
+
+
+@pytest.mark.parametrize(
+    ("row", "fires"),
+    [
+        ("Beta Team", True),
+        ("Alpha Team", False),
+        ("Ours", False),
+        ("Run 1", False),
+    ],
+)
+def test_foreign_team_row_spares_the_titles_team_and_self_references(row: str, fires: bool) -> None:
+    quote = next(line.strip() for line in RANKED_PAGE.splitlines() if row in line)
+    verdict = _attribute_in_context(RANKED_PAGE, quote, row, quote.split()[-1], SHARED_TASK_CONTEXT)
+
+    # A self-referential label is the one row that the table cues do not hold back.
+    if row == "Ours":
+        assert verdict.state is AttributionState.NO_SIGNAL
+        assert verdict.rule_id == "self_reference_row"
+    else:
+        assert verdict.state is AttributionState.UNRESOLVED
+    assert ("foreign_team_row" in {cue.cue_id for cue in verdict.cues}) is fires
+    assert row_names_team(SHARED_TASK_CONTEXT, row) is (row == "Alpha Team")
+    # The prior is read from the title and the table, so its cue never wears the one
+    # scope that may decide.
+    assert {cue.scope for cue in verdict.cues if cue.cue_id == "foreign_team_row"} <= {
+        PAPER_CONTEXT_CUE_SCOPE
+    }
+    assert all(cue.scope != "row_label" for cue in verdict.cues if cue.cue_id != "self_reference")
+
+
+def test_foreign_team_row_needs_a_table_level_cue_and_a_trusted_row() -> None:
+    plain = _attribute_in_context(
+        PLAIN_PAGE, "Beta Team 0.81", "Beta Team", "0.81", SHARED_TASK_CONTEXT
+    )
+    untrusted = _attribute_in_context(
+        RANKED_PAGE, "Beta Team 0.81", "Gamma", "0.81", SHARED_TASK_CONTEXT
+    )
+
+    assert plain.state is AttributionState.NO_SIGNAL
+    assert plain.cues == []
+    assert untrusted.rule_id == "row_unresolved"
+    assert "foreign_team_row" not in {cue.cue_id for cue in untrusted.cues}
+
+
+def test_a_caption_cue_outside_the_table_level_set_never_triggers_the_prior() -> None:
+    """`caption_reported` is recorded but is not a table-level cue, so the team's
+    absence from the row label says nothing and `foreign_team_row` stays silent."""
+
+    verdict = _attribute_in_context(
+        MIXED_ORIGIN_PAGE, "Paper System 0.742", "Paper System", "0.742", SHARED_TASK_CONTEXT
+    )
+
+    assert verdict.rule_id == "weak_cue_recorded"
+    assert [cue.cue_id for cue in verdict.cues] == ["caption_reported"]
+    assert not has_table_level_cue(verdict, load_lexicon())
+
+
+def test_overview_paper_rows_fires_on_every_row_of_a_cue_bearing_table() -> None:
+    trusted = _attribute_in_context(RANKED_PAGE, "Ours 0.79", "Ours", "0.79", OVERVIEW_CONTEXT)
+    untrusted = _attribute_in_context(
+        RANKED_PAGE, "Beta Team 0.81", "Gamma", "0.81", OVERVIEW_CONTEXT
+    )
+    plain = _attribute_in_context(
+        PLAIN_PAGE, "Beta Team 0.81", "Beta Team", "0.81", OVERVIEW_CONTEXT
+    )
+
+    assert "overview_paper_rows" in {cue.cue_id for cue in trusted.cues}
+    assert "overview_paper_rows" in {cue.cue_id for cue in untrusted.cues}
+    assert {
+        cue.scope for cue in (*trusted.cues, *untrusted.cues) if cue.cue_id == "overview_paper_rows"
+    } == {PAPER_CONTEXT_CUE_SCOPE}
+    # "Ours" names the paper itself, so the overview cue is recorded but does not
+    # hold that row back; any other trusted row in the table stays unresolved.
+    assert trusted.state is AttributionState.NO_SIGNAL
+    assert trusted.rule_id == "self_reference_row"
+    other = _attribute_in_context(
+        RANKED_PAGE, "Beta Team 0.81", "Beta Team", "0.81", OVERVIEW_CONTEXT
+    )
+    assert other.state is AttributionState.UNRESOLVED
+    assert "overview_paper_rows" in {cue.cue_id for cue in other.cues}
+    assert plain.cues == []
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Ours", "Our system", "This work", "Proposed model", "BERT (ours)"],
+)
+def test_a_self_referential_row_label_keeps_its_row_out_of_the_table_cues(label: str) -> None:
+    page = RANKED_PAGE.replace("Ours        ", f"{label:<12}")
+    quote = next(line.strip() for line in page.splitlines() if label in line)
+    verdict = _attribute_in_context(page, quote, label, "0.79", SHARED_TASK_CONTEXT)
+
+    assert verdict.state is AttributionState.NO_SIGNAL
+    assert verdict.rule_id == "self_reference_row"
+    assert verdict.cues[0].cue_id == "self_reference"
+    assert verdict.cues[0].scope == "row_label"
+    assert {cue.cue_id for cue in verdict.cues[1:]} >= {"rank_column", "leaderboard_caption"}
+    assert verdict.origin_basis(ClaimType.PRIMARY_RESULT) is (
+        OriginBasis.MODEL_ASSERTED_PRIMARY_NO_EXTERNAL_CUE
+    )
+    assert OriginExportPolicy.TIERED.permits(verdict.origin_basis(ClaimType.PRIMARY_RESULT))
+    assert not OriginExportPolicy.POSITIVE_ONLY.permits(
+        verdict.origin_basis(ClaimType.PRIMARY_RESULT)
+    )
+
+
+def test_a_self_referential_label_with_a_citation_bracket_still_abstains() -> None:
+    page = RANKED_PAGE.replace("Ours        ", "Ours [3]    ")
+    verdict = _attribute_in_context(page, "Ours [3] 0.79", "Ours [3]", "0.79", None)
+
+    assert verdict.state is AttributionState.UNRESOLVED
+    assert verdict.rule_id == "weak_cue_recorded"
+    assert "citation_bracket" in {cue.cue_id for cue in verdict.cues}
+
+
+def test_without_a_paper_context_the_prior_stays_silent() -> None:
+    verdict = _attribute_in_context(RANKED_PAGE, "Beta Team 0.81", "Beta Team", "0.81", None)
+
+    assert {cue.cue_id for cue in verdict.cues} == {"rank_column", "leaderboard_caption"}
+
+
+@pytest.mark.parametrize(
+    ("title", "kind", "team"),
+    [
+        (
+            "Alpha Team at SemEval-2030 Task 9: Detecting Invented Phenomena",
+            "shared_task_system_paper",
+            "Alpha Team",
+        ),
+        (
+            "CoLab at UdX at SemEval-2030 Task 9: Ensembles",
+            "shared_task_system_paper",
+            "CoLab at UdX",
+        ),
+        (
+            "Maple Leaf@CASE 2031: Task-Specific Adaptation",
+            "shared_task_system_paper",
+            "Maple Leaf",
+        ),
+        (
+            "Team Juniper at the ExampleEval 2030 Shared Task 1 on Invented Detection",
+            "shared_task_system_paper",
+            "Team Juniper",
+        ),
+        ("ABC-NLP at MultiThing: Continual Learning", "shared_task_system_paper", "ABC-NLP"),
+        ("Overview of the Invented Phenomena Shared Task", "overview_paper", None),
+        ("Findings of the 2030 Invented Shared Task", "overview_paper", None),
+        ("GRUPPO at MultiPRIDE: Reclamatory Intent", "shared_task_system_paper", "GRUPPO"),
+        ("A Look at Invented Detection: Lessons", "other", None),
+        ("Looking at BERT: What It Knows", "other", None),
+        ("Hate at First Sight: A Study", "other", None),
+        ("Detecting Invented Compounds - An Unsupervised Approach", "other", None),
+        ("", "other", None),
+        (None, "other", None),
+    ],
+)
+def test_paper_context_is_derived_from_the_title_shape(
+    title: str | None, kind: str, team: str | None
+) -> None:
+    context = paper_context_from_title(title)
+
+    assert context.paper_kind is PaperKind(kind)
+    assert context.team_name == team
+    assert context.title == (title or None)
+
+
+@pytest.mark.parametrize(
+    ("team", "label", "names"),
+    [
+        ("Team Juniper", "Juniper run 2", True),
+        ("Alpha Team", "alpha-team (ours)", True),
+        ("NS", "XLM-R ensemble", False),
+        ("Alpha Team", "Team Alpha", False),
+        ("Alpha Team", None, False),
+    ],
+)
+def test_row_names_team_matches_whole_words_only(team: str, label: str | None, names: bool) -> None:
+    context = PaperContext(paper_kind=PaperKind.SHARED_TASK_SYSTEM_PAPER, team_name=team)
+
+    assert row_names_team(context, label) is names
+    assert row_names_team(None, label) is False
+
+
+def test_the_default_lexicon_is_v2_and_the_earlier_ones_still_load() -> None:
+    current = load_lexicon()
+    previous = load_lexicon(ATTRIBUTION_LEXICON_PATHS["attribution-cues-v0"])
+    v1 = load_lexicon(ATTRIBUTION_LEXICON_PATHS["attribution-cues-v1"])
+
+    assert current.lexicon_id == "attribution-cues-v2"
+    assert {cue.cue_id for cue in current.self_reference_row} == {"self_reference"}
+    assert v1.lexicon_id == "attribution-cues-v1"
+    assert v1.self_reference_row == ()
+    assert {cue.cue_id for cue in current.abstaining_table_header} == {"rank_column"}
+    assert {cue.cue_id for cue in current.abstaining_paper_context} == {
+        "foreign_team_row",
+        "overview_paper_rows",
+    }
+    assert previous.lexicon_id == "attribution-cues-v0"
+    assert previous.abstaining_table_header == ()
+    assert previous.abstaining_paper_context == ()
+    assert current.sha256 != previous.sha256
+
+
+def test_a_recorded_lexicon_loads_from_the_shipped_copy_it_names() -> None:
+    """A replay runs under the lexicon the run recorded, even when the default moved on."""
+
+    previous = load_lexicon(ATTRIBUTION_LEXICON_PATHS["attribution-cues-v0"])
+
+    recorded = load_recorded_lexicon(previous.lexicon_id, previous.sha256)
+
+    assert (recorded.lexicon_id, recorded.sha256) == (previous.lexicon_id, previous.sha256)
+    assert recorded.lexicon_id != load_lexicon().lexicon_id
+
+
+@pytest.mark.parametrize(
+    ("lexicon_id", "sha256"),
+    [
+        ("attribution-cues-v9", "0" * 64),
+        ("attribution-cues-v1", "0" * 64),
+        (None, None),
+    ],
+)
+def test_a_recorded_lexicon_that_is_missing_or_changed_is_refused(
+    lexicon_id: str | None, sha256: str | None
+) -> None:
+    with pytest.raises(ValueError):
+        load_recorded_lexicon(lexicon_id, sha256)
+
+
+def test_a_lexicon_whose_table_level_cues_name_no_table_cue_is_refused(tmp_path) -> None:
+    text = DEFAULT_ATTRIBUTION_LEXICON_PATH.read_text(encoding="utf-8")
+    assert "table_level_cues:\n  - rank_column\n" in text
+    path = tmp_path / "attribution-cues-bad.yaml"
+    path.write_text(
+        text.replace(
+            "table_level_cues:\n  - rank_column\n", "table_level_cues:\n  - citation_bracket\n"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="citation_bracket"):
+        load_lexicon(path)
