@@ -33,7 +33,11 @@ from proceedings_to_eee.io import (
     sha256_file,
     write_json,
 )
-from proceedings_to_eee.resources import DEFAULT_EEE_SCHEMA_PATH
+from proceedings_to_eee.resources import (
+    DEFAULT_EEE_SCHEMA_PATH,
+    EEE_SCHEMA_SHA256,
+    EEE_SCHEMA_VERSION,
+)
 from proceedings_to_eee.sources.manifest import SourceManifest
 from proceedings_to_eee.validation.eee_schema import (
     SchemaAuthority,
@@ -44,8 +48,8 @@ from proceedings_to_eee.validation.eee_schema import (
 CARD_SCHEMA_VERSION = "paper-extraction-review-card/0.1"
 INDEX_SCHEMA_VERSION = "paper-extraction-review-index/0.1"
 CARD_STATEMENT = "Extraction Review Card; not an Evaluation Card."
-PINNED_EEE_SCHEMA_VERSION = "0.2.2"
-PINNED_EEE_SCHEMA_SHA256 = "088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a"
+PINNED_EEE_SCHEMA_VERSION = EEE_SCHEMA_VERSION
+PINNED_EEE_SCHEMA_SHA256 = EEE_SCHEMA_SHA256
 PINNED_EEE_SCHEMA_PATH = DEFAULT_EEE_SCHEMA_PATH
 POST_HOC_CORRECTED_HOLDOUT_LIMITATION = (
     "The immutable first holdout run is preserved separately; this card reflects the "

@@ -1268,7 +1268,7 @@ def _build_sealed_run(
             "prompt_sha256": "d" * 64,
             "request_contract_sha256": "e" * 64,
         },
-        "eee_schema": {"version": "0.2.2", "sha256": EEE_SCHEMA_SHA256},
+        "eee_schema": {"version": "0.3.0", "sha256": EEE_SCHEMA_SHA256},
         "code": {"git_commit": "f" * 40, "source_tree_sha256": "1" * 64},
     }
     write_json(paper / "run.json", paper_run)
@@ -2857,6 +2857,25 @@ def test_human_field_attestation_cannot_cure_physical_conflict(tmp_path: Path) -
 
     assert "PHYSICAL_CELL_CONFLICT" in _outcomes(derived)[0]["failure_codes"]
     assert not list(derived.glob("*/eee/*.json"))
+
+
+@pytest.mark.parametrize(
+    ("blocker", "expected"),
+    [
+        ("signed_difference_value", "SIGNED_DIFFERENCE_VALUE"),
+        ("value_outside_registry_metric_bounds", "VALUE_OUTSIDE_METRIC_BOUNDS"),
+        ("uncertainty_interval_outside_registry_metric_bounds", "VALUE_OUTSIDE_METRIC_BOUNDS"),
+    ],
+)
+def test_a_value_blocker_gets_its_own_review_failure_code(blocker: str, expected: str) -> None:
+    candidate = _candidate()
+    candidate.export_status = ExportStatus.NEEDS_REVIEW
+    candidate.export_reason = f"value_blocker={blocker}"
+
+    codes = reviewed_workflow._non_origin_failure_codes(candidate)
+
+    assert expected in codes
+    assert "NON_ORIGIN_GATE_FAILED" not in codes
 
 
 def test_human_field_attestation_cannot_cure_field_conflict(tmp_path: Path) -> None:

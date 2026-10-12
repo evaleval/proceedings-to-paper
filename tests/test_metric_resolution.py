@@ -4,9 +4,12 @@ import pytest
 
 from proceedings_to_eee.domain.observation import MetricSpec, ReportedValue
 from proceedings_to_eee.resolution.metrics import (
+    EVIDENCE_PERCENT_NOTE,
+    UNMARKED_PERCENT_NOTE,
     metric_unit_is_compatible,
     registry_value_range_issue,
     resolve_metric_value,
+    unit_inference_note,
 )
 
 
@@ -85,16 +88,105 @@ def test_percent_unit_can_be_resolved_from_the_exact_evidence_token() -> None:
     assert note
 
 
-def test_unrelated_percent_in_evidence_does_not_supply_a_unit() -> None:
+def test_unrelated_percent_in_evidence_is_not_what_supplies_the_unit() -> None:
+    """The percent on another token does not transfer; the unmarked-value rule decides."""
+
     metric, value, note = resolve_metric_value(
         MetricSpec(raw_name="F1"),
         ReportedValue(raw="73.4", numeric=73.4),
         ["Threshold 73.4 with comparison score 66.1%"],
     )
 
+    assert note == UNMARKED_PERCENT_NOTE
+    assert note != EVIDENCE_PERCENT_NOTE
+    assert metric.unit == "percent"
+    assert value.unit == "percent"
+
+
+def test_unrelated_percent_in_evidence_does_not_supply_a_unit_above_one_hundred() -> None:
+    metric, value, note = resolve_metric_value(
+        MetricSpec(raw_name="F1"),
+        ReportedValue(raw="734", numeric=734.0),
+        ["Threshold 734 with comparison score 66.1%"],
+    )
+
     assert metric.unit is None
     assert value.unit is None
     assert note is None
+
+
+@pytest.mark.parametrize(
+    ("raw_name", "raw", "numeric"),
+    [("Accuracy", "73.4", 73.4), ("macro F1", "1.2", 1.2), ("FPR", "100", 100.0)],
+)
+def test_unmarked_value_above_one_resolves_to_percent_for_a_plain_registry_rate_metric(
+    raw_name: str, raw: str, numeric: float
+) -> None:
+    metric, value, note = resolve_metric_value(
+        MetricSpec(raw_name=raw_name),
+        ReportedValue(raw=raw, numeric=numeric),
+        [f"Atlas {raw} 0.91 Challenger 61.2"],
+    )
+
+    assert note == UNMARKED_PERCENT_NOTE
+    assert metric.unit == "percent"
+    assert value.unit == "percent"
+    assert (metric.min_score, metric.max_score) == (0.0, 100.0)
+
+
+@pytest.mark.parametrize(
+    ("metric", "raw", "numeric", "quotes"),
+    [
+        # The token must be found on the page; an absent token proves nothing.
+        (MetricSpec(raw_name="Accuracy"), "73.4", 73.4, ["Atlas 61.2 Challenger 58.0"]),
+        # Above one hundred no percent reading is possible.
+        (MetricSpec(raw_name="Accuracy"), "173.4", 173.4, ["Atlas 173.4"]),
+        # A short alias resolved through extractor concordance is not a plain hit.
+        (MetricSpec(raw_name="P", canonical_id="precision"), "73.4", 73.4, ["Atlas 73.4"]),
+        # The vendored EEE registry supplies identity, never this inference.
+        (MetricSpec(raw_name="Exact Match"), "73.4", 73.4, ["Atlas 73.4"]),
+        # Identity-only metrics have no rate scale to read a percent against.
+        (MetricSpec(raw_name="BLEU"), "27.3", 27.3, ["Atlas 27.3"]),
+    ],
+)
+def test_unmarked_percent_rule_stays_narrow(
+    metric: MetricSpec, raw: str, numeric: float, quotes: list[str]
+) -> None:
+    resolved, value, note = resolve_metric_value(
+        metric, ReportedValue(raw=raw, numeric=numeric), quotes
+    )
+
+    assert resolved.unit is None
+    assert value.unit is None
+    assert note is None
+
+
+def test_mixed_notation_leaves_a_printed_percent_sign_unresolved() -> None:
+    """The same token appears with and without a sign, so the page contradicts itself."""
+
+    metric, value, note = resolve_metric_value(
+        MetricSpec(raw_name="Accuracy"),
+        ReportedValue(raw="73.4%", numeric=73.4),
+        ["Atlas accuracy 73.4%", "baseline threshold 73.4"],
+    )
+
+    assert metric.unit is None
+    assert value.unit is None
+    assert (metric.min_score, metric.max_score) == (None, None)
+    assert note is None
+
+
+def test_unit_inference_note_names_the_rule_that_reproduces_a_stored_unit() -> None:
+    quotes = ["Atlas 73.4 Challenger 61.2"]
+    metric, value, _ = resolve_metric_value(
+        MetricSpec(raw_name="Accuracy"), ReportedValue(raw="73.4", numeric=73.4), quotes
+    )
+
+    assert unit_inference_note(metric, value, quotes) == UNMARKED_PERCENT_NOTE
+    # An explicit unit that no rule reproduces has no inference note.
+    explicit_metric = metric.model_copy(update={"unit": "proportion"})
+    explicit_value = value.model_copy(update={"unit": "proportion"})
+    assert unit_inference_note(explicit_metric, explicit_value, quotes) is None
 
 
 def test_mixed_identical_raw_notation_does_not_supply_percent_unit() -> None:

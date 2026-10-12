@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from proceedings_to_eee.composition.eee import (
+    INFERRED_PERCENT_BOUNDS,
+    REGISTRY_BOUNDS,
+    UNRESOLVED_BOUNDS,
+)
+from proceedings_to_eee.domain.dataset_binding import DatasetBindingClass, SplitSource
 from proceedings_to_eee.domain.observation import CandidateObservation
 from proceedings_to_eee.evaluation.corpus_score import aggregate_reference_scores
 from proceedings_to_eee.evaluation.reference_score import score_claim_type_pairs
@@ -31,6 +37,13 @@ from proceedings_to_eee.providers.openrouter import (
     structured_request_contract_from_call,
 )
 from proceedings_to_eee.reporting.corpus_html import render_corpus_html
+from proceedings_to_eee.resolution.metrics import (
+    EEE_REGISTRY_SOURCE,
+    MODEL_SOURCE,
+    NO_SOURCE,
+    REGISTRY_CONCORDANT_SOURCE,
+    REGISTRY_SOURCE,
+)
 from proceedings_to_eee.sources.manifest import SourceManifest
 from proceedings_to_eee.validation.eee_schema import load_schema, validate_eee_record
 
@@ -166,8 +179,9 @@ _COUNT_FIELDS = (
     "reference_false_negatives",
     "negative_control_false_primary",
 )
+_UNFINISHED_RUN_STATUSES = frozenset({"bounded_incomplete", "budget_stopped", "error"})
 _PAPER_RUN_STATUSES = frozenset(
-    {"success", "partial_failure", "quality_failure", "bounded_incomplete", "error"}
+    {"success", "partial_failure", "quality_failure", *_UNFINISHED_RUN_STATUSES}
 )
 _CORPUS_RUN_STATUSES = frozenset({"success", "partial_failure", "bounded_incomplete", "error"})
 _CORPUS_PARTITION_FIELDS = (
@@ -229,6 +243,12 @@ _REVIEW_ISSUES = (
     "other",
 )
 _REVIEW_ITEM_TYPES = ("candidate", "paper_without_candidates")
+_METRIC_IDENTITY_SOURCES = frozenset(
+    {REGISTRY_SOURCE, REGISTRY_CONCORDANT_SOURCE, EEE_REGISTRY_SOURCE, MODEL_SOURCE, NO_SOURCE}
+)
+_METRIC_BOUNDS_BASES = frozenset({REGISTRY_BOUNDS, INFERRED_PERCENT_BOUNDS, UNRESOLVED_BOUNDS})
+_DATASET_BINDING_CLASSES = frozenset(item.value for item in DatasetBindingClass)
+_SPLIT_SOURCES = frozenset(item.value for item in SplitSource)
 
 
 class PublicSnapshotError(ValueError):
@@ -2770,7 +2790,7 @@ def _project_stage_execution(
         for field in _STAGE_EXECUTION_FIELDS[stage]
         if field in source
     }
-    finalized = run_status not in {"bounded_incomplete", "error"}
+    finalized = run_status not in _UNFINISHED_RUN_STATUSES
     if stage == "extractor":
         if result["calls_resumed"] != (
             result["calls_resumed_succeeded"] + result["calls_resumed_failed"]
@@ -2977,7 +2997,7 @@ def _project_paper_run(value: Any, index: int) -> dict[str, Any]:
         if stage not in source:
             raise PublicSnapshotError(f"corpus.runs[{index}].{stage} is required")
         result[stage] = _project_stage(source[stage], stage=stage, run_status=status)
-    if status not in {"bounded_incomplete", "error"}:
+    if status not in _UNFINISHED_RUN_STATUSES:
         for stage in (
             "extractor",
             "row_enumeration",
@@ -4247,6 +4267,9 @@ def _composer_source_provenance(value: Any, *, paper_id: str, context: str) -> d
         "producer_origin_basis",
         "origin_export_policy",
         "pipeline_git_commit",
+        # Hash of the dataset inventory gate the record's bindings came from; absent
+        # on records composed for a paper without an inventory.
+        "dataset_inventory_sha256",
     }
     tuple_audited = mode in {"tuple_gated_production", "tuple_audited_human_reviewed"}
     human_reviewed = mode in {"tuple_audited_human_reviewed", "legacy_human_reviewed"}
@@ -4275,6 +4298,7 @@ def _composer_source_provenance(value: Any, *, paper_id: str, context: str) -> d
         "tuple_sidecar_sha256",
         "review_manifest_sha256",
         "verifier_sidecar_sha256",
+        "dataset_inventory_sha256",
     ):
         if field in projected and re.fullmatch(r"[a-f0-9]{64}", projected[field]) is None:
             raise PublicSnapshotError(f"{context}.{field} is invalid")
@@ -4316,13 +4340,24 @@ def _project_composer_score_details(
         "producer_origin_basis",
         "attribution_state",
         "attribution_rule_id",
+        # Cue ids only; the composer never writes the matched text into a record.
+        "attribution_cues",
         "review_tier",
         "referential_status",
         "field_provenance_gate",
         "text_support",
         "evidence_page",
         "origin_export_policy",
+        # Metric provenance labels, optional because older records predate them.
+        "metric_identity_source",
+        "metric_bounds",
     }
+    for key, values in (
+        ("metric_identity_source", _METRIC_IDENTITY_SOURCES),
+        ("metric_bounds", _METRIC_BOUNDS_BASES),
+    ):
+        if key in source and source[key] not in values:
+            raise PublicSnapshotError(f"{context}.{key} is unsupported")
     mode = source_provenance["export_provenance_mode"]
     if "tuple_sidecar_sha256" in source_provenance:
         required.update({"tuple_gate_sha256", "tuple_sidecar_sha256"})
@@ -4531,11 +4566,16 @@ def _project_composer_eee_record(
     model_details = _composer_object(
         model["additional_details"],
         required={"identity_status"},
-        optional={"reported_version"},
+        # Deployment and availability are required by EEE 0.3.0 and absent from records
+        # composed under 0.2.2; the composer only ever states that it does not know them.
+        optional={"reported_version", "deployment_type", "model_availability"},
         context=f"{context}.model_info.additional_details",
     )
     if model_details["identity_status"] not in {"canonical", "raw_name"}:
         raise PublicSnapshotError(f"{context}.model_info.identity_status is unsupported")
+    for key in ("deployment_type", "model_availability"):
+        if key in model_details and model_details[key] != "unknown":
+            raise PublicSnapshotError(f"{context}.model_info.{key} is not composer-emitted")
     library = _composer_object(
         source["eval_library"],
         required={"name", "version", "additional_details"},
@@ -4595,9 +4635,23 @@ def _project_composer_eee_record(
                 "aggregation",
                 "raw_scope",
                 "samples_number_reported",
+                # Dataset binding labels: the raw string the paper printed, how it was
+                # bound to an inventory entry, and where a derived split was read from.
+                "dataset_raw",
+                "dataset_binding_class",
+                "dataset_binding_rule",
+                "split_source",
             },
             context=f"{result_context}.source_data.additional_details",
         )
+        for key, values in (
+            ("dataset_binding_class", _DATASET_BINDING_CLASSES),
+            ("split_source", _SPLIT_SOURCES),
+        ):
+            if key in scope_details and scope_details[key] not in values:
+                raise PublicSnapshotError(
+                    f"{result_context}.source_data.additional_details.{key} is unsupported"
+                )
         metric = _composer_object(
             result["metric_config"],
             required={"metric_name", "metric_parameters", "lower_is_better"},

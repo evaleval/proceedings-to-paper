@@ -640,6 +640,110 @@ def test_reference_resolution_records_a_supported_derived_unit_explicitly() -> N
     assert replayed[CandidateField.UNIT].reason == provenance[CandidateField.UNIT].reason
 
 
+@pytest.mark.parametrize("marker", ["note", "provenance"])
+def test_reference_resolution_withdraws_an_inferred_unit_mixed_notation_no_longer_supports(
+    marker: str,
+) -> None:
+    """A unit an earlier pass read from a printed sign is re-derived on replay, not kept.
+
+    The as-run ledgers mark such a unit either by the rule's note or by the UNIT field's
+    derivation reason alone; both must trigger the re-derivation.
+    """
+
+    candidate = _candidate(
+        quote="ChatGPT HOT Prompt 1 accuracy drop 2%",
+        system="ChatGPT",
+        provider=None,
+        scope=ObservationScope(dataset_raw="HOT Prompt 1"),
+        metric=MetricSpec(raw_name="Accuracy"),
+        value=ReportedValue(raw="2%", numeric=2.0),
+    )
+    candidate.evidence[0].kind = EvidenceKind.PROSE
+    candidate.field_provenance = quote_field_provenance(candidate)
+    resolve_references(candidate)
+    assert candidate.metric is not None and candidate.value is not None
+    assert candidate.metric.unit == candidate.value.unit == "percent"
+    if marker == "note":
+        candidate.field_provenance = []
+    else:
+        candidate.notes = []
+
+    # The page is re-read with the same token printed without a sign.
+    candidate.evidence.append(
+        EvidenceAnchor(
+            source_id="src_fixture", page=1, kind=EvidenceKind.PROSE, quote="a drop of 2 points"
+        )
+    )
+    resolve_references(candidate)
+
+    assert candidate.metric.unit is None and candidate.value.unit is None
+    assert (candidate.metric.min_score, candidate.metric.max_score) == (None, None)
+    assert candidate.referential_status is ReferentialStatus.UNRESOLVED
+    assert not any("unit resolved" in note for note in candidate.notes)
+    if candidate.field_provenance:
+        unit = next(
+            item for item in candidate.field_provenance if item.field is CandidateField.UNIT
+        )
+        assert unit.status is not FieldBindingStatus.BOUND
+
+
+def test_reference_resolution_keeps_an_extractor_stated_unit_under_mixed_notation() -> None:
+    """Only a unit the pipeline inferred is withdrawn; the extractor's claim is preserved."""
+
+    candidate = _candidate(
+        quote="ChatGPT HOT Prompt 1 accuracy drop 2% from a drop of 2 points",
+        system="ChatGPT",
+        provider=None,
+        scope=ObservationScope(dataset_raw="HOT Prompt 1"),
+        metric=MetricSpec(raw_name="Accuracy", unit="percent"),
+        value=ReportedValue(raw="2%", numeric=2.0, unit="percent"),
+    )
+    candidate.evidence[0].kind = EvidenceKind.PROSE
+    candidate.field_provenance = quote_field_provenance(candidate)
+
+    resolve_references(candidate)
+
+    assert candidate.metric is not None and candidate.value is not None
+    assert candidate.metric.unit == candidate.value.unit == "percent"
+    assert (candidate.metric.min_score, candidate.metric.max_score) == (0.0, 100.0)
+
+
+def test_reference_resolution_records_an_unmarked_percent_derivation_explicitly() -> None:
+    """The narrow percent rule binds the unit through its own reason id, replay-stable."""
+
+    candidate = _candidate(
+        quote="ChatGPT HOT Prompt 1 Accuracy 76.4",
+        system="ChatGPT",
+        provider=None,
+        scope=ObservationScope(dataset_raw="HOT Prompt 1"),
+        metric=MetricSpec(raw_name="Accuracy"),
+        value=ReportedValue(raw="76.4", numeric=76.4),
+    )
+    candidate.evidence[0].kind = EvidenceKind.PROSE
+    candidate.field_provenance = quote_field_provenance(candidate)
+
+    resolve_references(candidate)
+
+    assert candidate.metric is not None and candidate.value is not None
+    assert candidate.metric.unit == "percent"
+    assert candidate.value.unit == "percent"
+    assert (candidate.metric.min_score, candidate.metric.max_score) == (0.0, 100.0)
+    provenance = {item.field: item for item in candidate.field_provenance}
+    assert provenance[CandidateField.UNIT].status is FieldBindingStatus.BOUND
+    assert provenance[CandidateField.UNIT].reason == (
+        "deterministic_reference_resolution="
+        "unit_resolved_as_percent_from_registry_bounded_metric_and_unmarked_value_above_one"
+    )
+    assert {source.quote_sha256 for source in provenance[CandidateField.UNIT].sources} == {
+        candidate.evidence[0].quote_sha256,
+    }
+
+    resolve_references(candidate)
+    replayed = {item.field: item for item in candidate.field_provenance}
+    assert replayed[CandidateField.UNIT].status is FieldBindingStatus.BOUND
+    assert replayed[CandidateField.UNIT].reason == provenance[CandidateField.UNIT].reason
+
+
 def test_reference_resolution_refreshes_quotes_per_field_in_mixed_provenance() -> None:
     candidate = _candidate(
         quote="0.76",
@@ -1517,7 +1621,7 @@ def test_validation_withholds_out_of_range_bounded_metric_value(
 
     assert validated.referential_status is ReferentialStatus.UNRESOLVED
     assert validated.export_status is ExportStatus.NEEDS_REVIEW
-    assert validated.export_reason == "referential_status=unresolved"
+    assert validated.export_reason == "value_blocker=value_outside_registry_metric_bounds"
     assert value_binding.status is FieldBindingStatus.UNSUPPORTED
     assert value_binding.reason == "value_outside_registry_metric_bounds"
 
@@ -1804,6 +1908,7 @@ def test_lowercase_actor_setting_borrow_is_not_eligible(connector: str) -> None:
 
 @pytest.mark.parametrize("connector", ["but", "however", "against"])
 def test_lowercase_actor_metric_metadata_borrow_is_not_eligible(connector: str) -> None:
+    # A metric name no registry knows, so the only metadata on offer is the borrowed one.
     candidate = _candidate(
         quote=(
             f"atlas d1 score 0.76% {connector} challenger score canonical id "

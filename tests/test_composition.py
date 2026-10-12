@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from proceedings_to_eee.composition.eee import compose_eee_records
-from proceedings_to_eee.domain.attribution import AttributionState, AttributionVerdict
+from proceedings_to_eee.domain.attribution import (
+    AttributionCue,
+    AttributionState,
+    AttributionVerdict,
+    OriginBasis,
+    OriginExportPolicy,
+    ReviewTier,
+)
 from proceedings_to_eee.domain.export_provenance import (
     CandidateExportAuthorization,
     ExportCompositionProvenance,
@@ -16,14 +24,21 @@ from proceedings_to_eee.domain.export_provenance import (
     tuple_gated_export_provenance,
     tuple_unverified_review_provenance,
 )
-from proceedings_to_eee.domain.observation import CandidateObservation
+from proceedings_to_eee.domain.observation import (
+    CandidateObservation,
+    EvidenceAnchor,
+    MetricSpec,
+    ReportedValue,
+)
 from proceedings_to_eee.domain.status import ExportStatus
+from proceedings_to_eee.resources import LEGACY_EEE_SCHEMA_PATH
 from proceedings_to_eee.sources.manifest import SourceManifest
+from proceedings_to_eee.validation.candidates import resolve_references
 from proceedings_to_eee.validation.eee_schema import load_schema, validate_eee_record
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = ROOT / "schemas" / "eee-0.2.2" / "eval.schema.json"
-SCHEMA_SHA = "088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a"
+SCHEMA = ROOT / "schemas" / "eee-0.3.0" / "eval.schema.json"
+SCHEMA_SHA = "c9c6195aec8a9dfa0b2aba4924ac1aa8a184c9d8ca97cee778cb531088e39b48"
 
 
 def _legacy(candidates: list[CandidateObservation]):
@@ -97,7 +112,7 @@ def test_non_paper_produced_candidate_never_composes(
     records = compose_eee_records(
         manifest=manifest,
         candidates=[eligible_candidate],
-        schema_version="0.2.2",
+        schema_version="0.3.0",
         provenance=_legacy([eligible_candidate]),
     )
 
@@ -116,7 +131,7 @@ def test_paper_produced_origin_does_not_override_other_export_gates(
         compose_eee_records(
             manifest=manifest,
             candidates=[eligible_candidate],
-            schema_version="0.2.2",
+            schema_version="0.3.0",
             provenance=_legacy([eligible_candidate]),
         )
         == []
@@ -179,7 +194,7 @@ def test_composer_requires_explicit_typed_provenance(
         compose_eee_records(  # type: ignore[call-arg]
             manifest=manifest,
             candidates=[eligible_candidate],
-            schema_version="0.2.2",
+            schema_version="0.3.0",
         )
 
 
@@ -193,7 +208,7 @@ def test_stale_or_spliced_candidate_authorization_fails_closed(
         compose_eee_records(
             manifest=manifest,
             candidates=[eligible_candidate],
-            schema_version="0.2.2",
+            schema_version="0.3.0",
             provenance=provenance,
         )
 
@@ -213,7 +228,7 @@ def test_tuple_gated_composition_requires_and_exposes_exact_passing_gate(
     records = compose_eee_records(
         manifest=manifest,
         candidates=[eligible_candidate],
-        schema_version="0.2.2",
+        schema_version="0.3.0",
         provenance=provenance,
     )
     details = records[0]["evaluation_results"][0]["score_details"]["details"]
@@ -256,7 +271,7 @@ def test_human_reviewed_mode_audits_failed_model_gates_without_treating_them_as_
     records = compose_eee_records(
         manifest=manifest,
         candidates=[eligible_candidate],
-        schema_version="0.2.2",
+        schema_version="0.3.0",
         provenance=provenance,
     )
     details = records[0]["evaluation_results"][0]["score_details"]["details"]
@@ -282,6 +297,237 @@ def test_tuple_only_automatic_mode_is_explicitly_unverified_and_cannot_authorize
         compose_eee_records(
             manifest=manifest,
             candidates=[eligible_candidate],
+            schema_version="0.3.0",
+            provenance=provenance,
+        )
+
+
+def _requote(candidate: CandidateObservation, quote: str) -> None:
+    """Replace the single anchor's quote; the anchor hash is bound, so rebuild it."""
+
+    [anchor] = candidate.evidence
+    candidate.evidence = [
+        EvidenceAnchor.model_validate(
+            {**anchor.model_dump(mode="json"), "quote": quote, "quote_sha256": None}
+        )
+    ]
+
+
+def _compose_one(
+    manifest: SourceManifest, candidate: CandidateObservation, schema_version: str = "0.3.0"
+) -> dict:
+    [record] = compose_eee_records(
+        manifest=manifest,
+        candidates=[candidate],
+        schema_version=schema_version,
+        provenance=_legacy([candidate]),
+    )
+    return record
+
+
+def test_records_state_metric_provenance_and_unknown_deployment(
+    manifest: SourceManifest, eligible_candidate: CandidateObservation
+) -> None:
+    schema, authority = load_schema(SCHEMA, SCHEMA_SHA)
+    record = _compose_one(manifest, eligible_candidate, authority.version)
+    [result] = record["evaluation_results"]
+    details = result["score_details"]["details"]
+
+    assert details["metric_identity_source"] == "registry"
+    assert details["metric_bounds"] == "registry"
+    assert result["metric_config"]["min_score"] == 0.0
+    assert result["metric_config"]["max_score"] == 100.0
+    model_details = record["model_info"]["additional_details"]
+    assert model_details["deployment_type"] == "unknown"
+    assert model_details["model_availability"] == "unknown"
+    assert model_details["identity_status"] == "canonical"
+    assert validate_eee_record(record, schema) == []
+
+
+def test_an_unmarked_percent_is_labelled_as_inferred(
+    manifest: SourceManifest, eligible_candidate: CandidateObservation
+) -> None:
+    candidate = eligible_candidate.model_copy(deep=True)
+    candidate.metric = MetricSpec(raw_name="Accuracy")
+    candidate.value = ReportedValue(raw="74.6", numeric=74.6)
+    _requote(candidate, "Atlas Moderation API  61.3  74.6  58.2")
+    resolve_references(candidate)
+    assert candidate.metric.unit == "percent"
+
+    [result] = _compose_one(manifest, candidate)["evaluation_results"]
+
+    assert result["metric_config"]["metric_unit"] == "percent"
+    assert result["metric_config"]["max_score"] == 100.0
+    assert result["score_details"]["details"]["metric_bounds"] == "inferred_percent"
+    assert result["score_details"]["details"]["metric_identity_source"] == "registry"
+
+
+def test_an_explicit_percent_unit_on_an_unmarked_value_keeps_registry_bounds(
+    manifest: SourceManifest, eligible_candidate: CandidateObservation
+) -> None:
+    """The rule never fired, so the label must not claim it did, even though the
+    derivation would reproduce the stated unit."""
+
+    candidate = eligible_candidate.model_copy(deep=True)
+    candidate.metric = MetricSpec(raw_name="Accuracy", unit="percent")
+    candidate.value = ReportedValue(raw="74.6", numeric=74.6, unit="percent")
+    _requote(candidate, "Atlas Moderation API  61.3  74.6  58.2")
+    resolve_references(candidate)
+    assert candidate.notes == []
+
+    [result] = _compose_one(manifest, candidate)["evaluation_results"]
+
+    assert result["metric_config"]["max_score"] == 100.0
+    assert result["score_details"]["details"]["metric_bounds"] == "registry"
+
+
+@pytest.mark.parametrize(
+    ("metric", "identity_source"),
+    [
+        (MetricSpec(raw_name="ChrF", canonical_id="chrf", lower_is_better=False), "registry"),
+        (
+            MetricSpec(
+                raw_name="Task A F1",
+                canonical_id="f1",
+                kind="f1",
+                unit="proportion",
+                lower_is_better=False,
+                min_score=0.0,
+                max_score=1.0,
+            ),
+            "model",
+        ),
+    ],
+)
+def test_unestablished_bounds_are_null_under_the_default_authority_and_absent_before_it(
+    manifest: SourceManifest,
+    eligible_candidate: CandidateObservation,
+    metric: MetricSpec,
+    identity_source: str,
+) -> None:
+    """A model-proposed scale is not a fact the pipeline established, so it is exported
+    exactly like a scale nobody knows: as explicit nulls where the schema allows them,
+    and not at all where it does not."""
+
+    candidate = eligible_candidate.model_copy(deep=True)
+    candidate.metric = metric
+    candidate.value = ReportedValue(raw="0.62", numeric=0.62, unit=metric.unit)
+    _requote(candidate, "Atlas Moderation API 0.62")
+
+    schema, authority = load_schema(SCHEMA, SCHEMA_SHA)
+    current = _compose_one(manifest, candidate, authority.version)
+    [result] = current["evaluation_results"]
+    assert result["metric_config"]["score_type"] == "continuous"
+    assert result["metric_config"]["min_score"] is None
+    assert result["metric_config"]["max_score"] is None
+    assert result["score_details"]["details"]["metric_bounds"] == "unresolved"
+    assert result["score_details"]["details"]["metric_identity_source"] == identity_source
+    assert validate_eee_record(current, schema) == []
+
+    legacy_schema, legacy = load_schema(LEGACY_EEE_SCHEMA_PATH)
+    [legacy_result] = _compose_one(manifest, candidate, legacy.version)["evaluation_results"]
+    assert "min_score" not in legacy_result["metric_config"]
+    assert "max_score" not in legacy_result["metric_config"]
+    # The candidate itself keeps whatever it proposed; only the projection withholds it.
+    assert candidate.metric.min_score == metric.min_score
+
+
+def test_a_vendored_eee_registry_identity_is_labelled_as_such(
+    manifest: SourceManifest, eligible_candidate: CandidateObservation
+) -> None:
+    candidate = eligible_candidate.model_copy(deep=True)
+    candidate.metric = MetricSpec(raw_name="EM")
+    candidate.value = ReportedValue(raw="0.62", numeric=0.62)
+    _requote(candidate, "Atlas Moderation API 0.62")
+    resolve_references(candidate)
+    assert candidate.metric.canonical_id == "exact-match"
+
+    [result] = _compose_one(manifest, candidate)["evaluation_results"]
+
+    assert result["metric_config"]["metric_id"] == "exact-match"
+    assert result["metric_config"]["metric_unit"] == "proportion"
+    assert (result["metric_config"]["min_score"], result["metric_config"]["max_score"]) == (0, 1)
+    assert result["score_details"]["details"]["metric_identity_source"] == "eee_registry"
+    assert result["score_details"]["details"]["metric_bounds"] == "registry"
+
+
+def test_an_authorization_the_verdict_forbids_fails_closed_and_names_the_candidate(
+    manifest: SourceManifest, eligible_candidate: CandidateObservation
+) -> None:
+    """A promotion upstream can never export past a recorded cue by accident."""
+
+    held = eligible_candidate.model_copy(
+        update={
+            "attribution": AttributionVerdict(
+                state=AttributionState.UNRESOLVED,
+                rule_id="weak_cue_recorded",
+                cues=[
+                    AttributionCue(cue_id="rank_column", scope="table_header", matched_text="Rank")
+                ],
+            )
+        }
+    )
+    observation_id = held.observation_id or held.stable_id()
+    provenance = legacy_export_provenance([held], reason="unit_test_manual_composition")
+    provenance = provenance.model_copy(
+        update={
+            "origin_policy": OriginExportPolicy.TIERED,
+            "authorizations": [
+                item.model_copy(
+                    update={
+                        "origin_basis": OriginBasis.MODEL_REVIEWED_ORIGIN_QUOTE,
+                        "review_tier": ReviewTier.MODEL_REVIEWED,
+                    }
+                )
+                for item in provenance.authorizations
+            ],
+        }
+    )
+
+    with pytest.raises(ValueError, match=observation_id):
+        compose_eee_records(
+            manifest=manifest,
+            candidates=[held],
             schema_version="0.2.2",
             provenance=provenance,
         )
+
+
+def test_records_list_attribution_cue_ids_but_never_the_matched_text(
+    manifest: SourceManifest, eligible_candidate: CandidateObservation
+) -> None:
+    cued = eligible_candidate.model_copy(
+        update={
+            "attribution": AttributionVerdict(
+                state=AttributionState.PAPER_PRODUCED,
+                rule_id="explicit_test_fixture",
+                cues=[
+                    AttributionCue(
+                        cue_id="caption_reported", scope="caption", matched_text="Reported"
+                    ),
+                    AttributionCue(cue_id="rank_column", scope="table_header", matched_text="Rank"),
+                    AttributionCue(
+                        cue_id="rank_column", scope="table_header", matched_text="Position"
+                    ),
+                ],
+            )
+        }
+    )
+
+    records = compose_eee_records(
+        manifest=manifest,
+        candidates=[cued],
+        schema_version="0.2.2",
+        provenance=_legacy([cued]),
+    )
+
+    details = records[0]["evaluation_results"][0]["score_details"]["details"]
+    assert details["attribution_cues"] == "caption_reported;rank_column"
+    assert "Position" not in json.dumps(records)
+    plain = compose_eee_records(
+        manifest=manifest,
+        candidates=[eligible_candidate],
+        schema_version="0.2.2",
+        provenance=_legacy([eligible_candidate]),
+    )
+    assert plain[0]["evaluation_results"][0]["score_details"]["details"]["attribution_cues"] == ""

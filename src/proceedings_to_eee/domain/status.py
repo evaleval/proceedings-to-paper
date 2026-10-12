@@ -21,6 +21,13 @@ class TextSupportStatus(StrEnum):
     UNSUPPORTED = "unsupported"
 
 
+class SupportMatchMode(StrEnum):
+    """How the supported evidence quotes were matched against the source page lines."""
+
+    SINGLE_LINE = "single_line"
+    CONSECUTIVE_LINES = "consecutive_lines"
+
+
 class ReferentialStatus(StrEnum):
     """Whether a candidate is assigned to the correct entity and scope."""
 

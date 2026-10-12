@@ -1,0 +1,567 @@
+{
+  "_meta": {
+    "counts": {
+      "aliases_total": 2355,
+      "aliases_vendored": 66,
+      "metrics_total": 1842,
+      "metrics_vendored": 24
+    },
+    "policy": "metrics with review_status 'reviewed' except generic placeholder ids; aliases with status 'confirmed' whose canonical_id names a vendored metric",
+    "retrieved_date": "2026-10-12",
+    "schema_version": "eee-metric-snapshot/0.1",
+    "source": {
+      "aliases": "https://evaleval-entity-registry.hf.space/api/v1/aliases?entity_type=metric",
+      "metrics": "https://evaleval-entity-registry.hf.space/api/v1/metrics"
+    }
+  },
+  "aliases": [
+    {
+      "canonical_id": "ast-accuracy",
+      "raw_value": "AST Accuracy",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "accuracy",
+      "raw_value": "Acc",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "accuracy",
+      "raw_value": "Accuracy",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "avg-attempts",
+      "raw_value": "Average Attempts",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "avg-attempts",
+      "raw_value": "Average guesses used per game",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "bleu-4",
+      "raw_value": "BLEU-4",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cot-correct",
+      "raw_value": "COT Correct",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cot-correct",
+      "raw_value": "COT correct",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cost-per-task",
+      "raw_value": "Cost Per Task",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "exact-match",
+      "raw_value": "EM",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "exact-match",
+      "raw_value": "EM-1",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "elo",
+      "raw_value": "Elo Rating",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cot-correct",
+      "raw_value": "Equivalent (CoT)",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "exact-match",
+      "raw_value": "Exact Match",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "f1",
+      "raw_value": "F1",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "f1",
+      "raw_value": "F1 Score",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "harmlessness",
+      "raw_value": "Harmlessness",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "p95-latency",
+      "raw_value": "Latency 95th Percentile",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-latency",
+      "raw_value": "Latency Mean",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "latency-stddev",
+      "raw_value": "Latency Standard Deviation",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-response-time",
+      "raw_value": "Mean Response Time",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-win-rate",
+      "raw_value": "Mean Win Rate",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-response-time",
+      "raw_value": "Mean response time per LLM invocation (ms)",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-win-rate",
+      "raw_value": "Mean win rate",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "pass-at-8",
+      "raw_value": "Overall Pass@8",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "pass-at-1",
+      "raw_value": "Pass@1",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "pass-at-8",
+      "raw_value": "Pass@8",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "refusal-rate",
+      "raw_value": "Refusal Rate",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "f1",
+      "raw_value": "Tokenized F1",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "accuracy",
+      "raw_value": "Top-1 Accuracy",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "total-cost",
+      "raw_value": "Total Cost",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "win-rate",
+      "raw_value": "Win Rate",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "win-rate",
+      "raw_value": "Win rate (%)",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "accuracy",
+      "raw_value": "accuracy",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "ast-accuracy",
+      "raw_value": "ast-accuracy",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "avg-attempts",
+      "raw_value": "avg-attempts",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "avg-attempts",
+      "raw_value": "avg_attempts",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "bleu-4",
+      "raw_value": "bleu-4",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "codegolf.score",
+      "raw_value": "codegolf.score",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cost-per-task",
+      "raw_value": "cost",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cost-per-task",
+      "raw_value": "cost-per-task",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cost-per-task",
+      "raw_value": "cost_per_task",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cot-correct",
+      "raw_value": "cot-correct",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cvebench.mean",
+      "raw_value": "cvebench.mean",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "cyse2-vulnerability-exploit.mean",
+      "raw_value": "cyse2-vulnerability-exploit.mean",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "elo",
+      "raw_value": "elo",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "exact-match",
+      "raw_value": "exact-match",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "f1",
+      "raw_value": "f1",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "harmlessness",
+      "raw_value": "harmlessness",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "latency-stddev",
+      "raw_value": "latency-stddev",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-latency",
+      "raw_value": "latency_mean",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "p95-latency",
+      "raw_value": "latency_p95",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "latency-stddev",
+      "raw_value": "latency_std",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-latency",
+      "raw_value": "mean-latency",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-response-time",
+      "raw_value": "mean-response-time",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "mean-win-rate",
+      "raw_value": "mean-win-rate",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "elo",
+      "raw_value": "overall_elo",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "p95-latency",
+      "raw_value": "p95-latency",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "pass-at-1",
+      "raw_value": "pass-at-1",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "pass-at-8",
+      "raw_value": "pass-at-8",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "refusal-rate",
+      "raw_value": "refusal-rate",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "swebench-verified-mini-mariushobbhahn.mean",
+      "raw_value": "swebench-verified-mini-mariushobbhahn.mean",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "total-cost",
+      "raw_value": "total-cost",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "total-cost",
+      "raw_value": "total_cost",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "win-rate",
+      "raw_value": "win-rate",
+      "status": "confirmed"
+    },
+    {
+      "canonical_id": "win-rate",
+      "raw_value": "win_rate",
+      "status": "confirmed"
+    }
+  ],
+  "metrics": [
+    {
+      "display_name": "Accuracy",
+      "id": "accuracy",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "AST Accuracy",
+      "id": "ast-accuracy",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Average Attempts",
+      "id": "avg-attempts",
+      "lower_is_better": true,
+      "max_score": null,
+      "min_score": 1.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "BLEU-4",
+      "id": "bleu-4",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "codegolf.score",
+      "id": "codegolf.score",
+      "lower_is_better": null,
+      "max_score": null,
+      "min_score": null,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Cost Per Task",
+      "id": "cost-per-task",
+      "lower_is_better": true,
+      "max_score": null,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "COT Correct",
+      "id": "cot-correct",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "cvebench.mean",
+      "id": "cvebench.mean",
+      "lower_is_better": null,
+      "max_score": null,
+      "min_score": null,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "cyse2-vulnerability-exploit.mean",
+      "id": "cyse2-vulnerability-exploit.mean",
+      "lower_is_better": null,
+      "max_score": null,
+      "min_score": null,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Elo Rating",
+      "id": "elo",
+      "lower_is_better": false,
+      "max_score": null,
+      "min_score": null,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Exact Match",
+      "id": "exact-match",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "F1 Score",
+      "id": "f1",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Harmlessness",
+      "id": "harmlessness",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Latency Standard Deviation",
+      "id": "latency-stddev",
+      "lower_is_better": true,
+      "max_score": null,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Latency Mean",
+      "id": "mean-latency",
+      "lower_is_better": true,
+      "max_score": null,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Mean Response Time",
+      "id": "mean-response-time",
+      "lower_is_better": true,
+      "max_score": null,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Mean Win Rate",
+      "id": "mean-win-rate",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Latency 95th Percentile",
+      "id": "p95-latency",
+      "lower_is_better": true,
+      "max_score": null,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Pass@1",
+      "id": "pass-at-1",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Pass@8",
+      "id": "pass-at-8",
+      "lower_is_better": false,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Refusal Rate",
+      "id": "refusal-rate",
+      "lower_is_better": null,
+      "max_score": 1.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "swebench-verified-mini-mariushobbhahn.mean",
+      "id": "swebench-verified-mini-mariushobbhahn.mean",
+      "lower_is_better": null,
+      "max_score": null,
+      "min_score": null,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Total Cost",
+      "id": "total-cost",
+      "lower_is_better": true,
+      "max_score": null,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    },
+    {
+      "display_name": "Win Rate",
+      "id": "win-rate",
+      "lower_is_better": false,
+      "max_score": 100.0,
+      "min_score": 0.0,
+      "review_status": "reviewed",
+      "score_type": "continuous"
+    }
+  ]
+}

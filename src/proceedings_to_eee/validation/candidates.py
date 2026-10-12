@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 
-from proceedings_to_eee.domain.attribution import OriginBasis, OriginExportPolicy
+from proceedings_to_eee.domain.attribution import OriginBasis, OriginExportPolicy, PaperContext
 from proceedings_to_eee.domain.observation import CandidateObservation, EvidenceAnchor
 from proceedings_to_eee.domain.provenance import (
     CandidateField,
@@ -24,15 +24,25 @@ from proceedings_to_eee.domain.status import (
     EvidenceKind,
     ExportStatus,
     ReferentialStatus,
+    SupportMatchMode,
     TextSupportStatus,
 )
 from proceedings_to_eee.extraction.pdf_layout import PdfLayout
 from proceedings_to_eee.extraction.region_index import build_region_index
-from proceedings_to_eee.resolution.attribution import attribute_candidate, load_lexicon
+from proceedings_to_eee.resolution.attribution import (
+    AttributionLexicon,
+    attribute_candidate,
+    load_lexicon,
+)
 from proceedings_to_eee.resolution.metrics import (
+    EVIDENCE_PERCENT_NOTE,
+    PERCENT_SIGN_NOTE,
+    PROPORTION_NOTE,
+    UNMARKED_PERCENT_NOTE,
     metric_unit_is_compatible,
     registry_value_range_issue,
     resolve_metric_value,
+    unit_inference_note,
 )
 from proceedings_to_eee.validation.field_provenance import (
     literal_setting_components_are_bound,
@@ -54,6 +64,20 @@ _PHYSICAL_CELL_CONFLICT_REASON = (
 _UNTRUSTED_REPLAY_SOURCE_KINDS = frozenset(
     {FieldSourceKind.EVIDENCE_QUOTE, FieldSourceKind.REVIEW_SPAN}
 )
+#: Whole words only: "against", "difficulty", "exchange" and "unchanged" contain the stems
+#: but do not call a number a difference. The delta sign needs no boundary; it is one.
+_DIFFERENCE_WORDING = re.compile(
+    r"(?i)Δ|\b(?:delta|improv\w*|gain(?:s|ed)?|diff(?:erences?|erential)?|change[sd]?|"
+    r"increase[sd]?|decrease[sd]?)\b"
+)
+_INFERRED_UNIT_NOTES = frozenset(
+    {PERCENT_SIGN_NOTE, EVIDENCE_PERCENT_NOTE, PROPORTION_NOTE, UNMARKED_PERCENT_NOTE}
+)
+_DERIVATION_REASON_PREFIX = "deterministic_reference_resolution="
+_LEADING_SIGN = re.compile(r"^\s*[+\-−–]")
+_LEADING_PLUS = re.compile(r"^\s*\+")
+#: Reason id for a signed value that reports a difference rather than a score.
+SIGNED_DIFFERENCE_BLOCKER = "signed_difference_value"
 
 
 def normalize_evidence_text(value: str) -> str:
@@ -117,6 +141,33 @@ def bounded_claim_present(text: str, claim: str) -> bool:
     return False
 
 
+def _quote_occurrences(quote: str, page_lines: list[str]) -> tuple[int, SupportMatchMode]:
+    """Count the exact occurrences of one quote on a page and say how they were matched.
+
+    The public contract calls this an exact quote, so a single-line quote is never
+    repaired: its original bytes must occur inside one source-native layout line. A quote
+    that itself spans lines is held to a whole-line rule instead. Every newline-separated
+    segment must equal one whole page line, in order and on consecutive lines, after the
+    layout-whitespace normalization the other evidence checks use. Whole lines cannot be
+    stitched together from fragments of neighbouring lines, which is what the single-line
+    rule guards against, so the relaxation stays safe. A blank segment, from a trailing
+    newline or a blank line inside the quote, would match a blank page line, which is not
+    evidence, so such a quote is unsupported.
+    """
+
+    if "\n" not in quote:
+        return sum(line.count(quote) for line in page_lines), SupportMatchMode.SINGLE_LINE
+    segments = [normalize_evidence_text(segment) for segment in quote.split("\n")]
+    if not all(segments):
+        return 0, SupportMatchMode.CONSECUTIVE_LINES
+    normalized_lines = [normalize_evidence_text(line) for line in page_lines]
+    occurrences = sum(
+        normalized_lines[start : start + len(segments)] == segments
+        for start in range(len(normalized_lines) - len(segments) + 1)
+    )
+    return occurrences, SupportMatchMode.CONSECUTIVE_LINES
+
+
 def verify_text_support(candidate: CandidateObservation, layouts: dict[str, PdfLayout]) -> None:
     """Check contiguous-line quotes and aggregate value support across all anchors.
 
@@ -124,11 +175,14 @@ def verify_text_support(candidate: CandidateObservation, layouts: dict[str, PdfL
     candidate may therefore carry several exact anchors, but at least one of them must
     contain the asserted raw value.  Checking each page line independently prevents a
     model-created string from passing merely because whitespace normalization stitches
-    adjacent source lines together.
+    adjacent source lines together. ``support_match_mode`` records whether every
+    supported quote sat inside one line or some quote needed consecutive whole lines;
+    the deterministic export tier accepts only the former.
     """
 
     quote_support: list[bool] = []
     value_support: list[bool] = []
+    match_modes: list[SupportMatchMode] = []
     for anchor in candidate.evidence:
         layout = layouts.get(anchor.source_id)
         if layout is None or anchor.page > layout.page_count:
@@ -136,16 +190,14 @@ def verify_text_support(candidate: CandidateObservation, layouts: dict[str, PdfL
             value_support.append(False)
             continue
         page = layout.pages[anchor.page - 1]
-        # The public contract calls this an exact quote, so do not repair whitespace or
-        # hyphenation here. A quote is supported only when its original bytes occur in one
-        # source-native layout line on the cited page.
         quote = anchor.quote
-        occurrences = sum(line.count(quote) for line in page.text.splitlines())
+        occurrences, match_mode = _quote_occurrences(quote, page.text.splitlines())
         quote_is_supported = bool(quote and quote.strip() and occurrences)
         quote_support.append(quote_is_supported)
         if not quote_is_supported:
             value_support.append(False)
             continue
+        match_modes.append(match_mode)
         if candidate.value is not None:
             raw_value = candidate.value.raw
             value_support.append(bool(raw_value and bounded_claim_present(quote, raw_value)))
@@ -165,6 +217,12 @@ def verify_text_support(candidate: CandidateObservation, layouts: dict[str, PdfL
         candidate.text_support = TextSupportStatus.PARTIALLY_SUPPORTED
     else:
         candidate.text_support = TextSupportStatus.UNSUPPORTED
+    if not match_modes:
+        candidate.support_match_mode = None
+    elif SupportMatchMode.CONSECUTIVE_LINES in match_modes:
+        candidate.support_match_mode = SupportMatchMode.CONSECUTIVE_LINES
+    else:
+        candidate.support_match_mode = SupportMatchMode.SINGLE_LINE
 
 
 def _resolution_reason(note: str) -> str:
@@ -397,14 +455,54 @@ def _refresh_resolved_field_provenance(
     return [refreshed[field] for field in CandidateField]
 
 
+def _unit_was_inferred(candidate: CandidateObservation) -> bool:
+    """Whether the stored unit came from a resolution rule rather than from the extractor.
+
+    A rule leaves its note on the candidate and, once field provenance exists, binds the
+    unit through a derivation reason; older ledgers may carry only the latter.
+    """
+
+    if any(note in _INFERRED_UNIT_NOTES for note in candidate.notes):
+        return True
+    return any(
+        item.field is CandidateField.UNIT
+        and item.status is FieldBindingStatus.BOUND
+        and (item.reason or "").startswith(_DERIVATION_REASON_PREFIX)
+        for item in candidate.field_provenance
+    )
+
+
+def _inferred_unit_is_stale(candidate: CandidateObservation) -> bool:
+    """Whether a unit an earlier pass inferred no longer re-derives from the evidence.
+
+    Rules change and evidence is re-read on replay: a token an earlier pass read as
+    percent from its printed sign may now be printed both with and without one. The
+    stored unit is then a stale conclusion rather than an extractor claim, and it must
+    not survive merely because the inference branch finds a unit already present. An
+    extractor-stated unit carries no inference marker and is never stale.
+    """
+
+    metric, value = candidate.metric, candidate.value
+    assert metric is not None and value is not None
+    if (metric.unit is None and value.unit is None) or not _unit_was_inferred(candidate):
+        return False
+    quotes = [anchor.quote for anchor in candidate.evidence]
+    return unit_inference_note(metric, value, quotes) is None
+
+
 def resolve_references(candidate: CandidateObservation) -> None:
     """Resolve only facts backed by the typed candidate or the explicit metric registry."""
 
     if candidate.metric and candidate.value:
         previous_hashes = candidate.field_value_sha256s()
+        metric, value = candidate.metric, candidate.value
+        if _inferred_unit_is_stale(candidate):
+            metric = metric.model_copy(update={"unit": None})
+            value = value.model_copy(update={"unit": None})
+            candidate.notes = [note for note in candidate.notes if note not in _INFERRED_UNIT_NOTES]
         metric, value, resolution_note = resolve_metric_value(
-            candidate.metric,
-            candidate.value,
+            metric,
+            value,
             (anchor.quote for anchor in candidate.evidence),
         )
         provenance = candidate.field_provenance
@@ -456,6 +554,46 @@ def resolve_references(candidate: CandidateObservation) -> None:
     candidate.referential_status = ReferentialStatus.RESOLVED
 
 
+def _difference_wording_texts(candidate: CandidateObservation) -> list[str]:
+    """Texts in which the anchor or the candidate itself may call the value a difference."""
+
+    texts: list[str | None] = []
+    for anchor in candidate.evidence:
+        texts.extend((anchor.label, anchor.column, anchor.row))
+    if candidate.metric is not None:
+        texts.append(candidate.metric.raw_name)
+    if candidate.scope is not None:
+        scope = candidate.scope
+        texts.extend((scope.raw_scope, scope.group, scope.subset, scope.aggregation))
+    texts.extend(
+        (candidate.evaluation_construct, candidate.operationalization, candidate.decision_rule)
+    )
+    texts.extend(candidate.notes)
+    return [text for text in texts if text]
+
+
+def value_export_blocker(candidate: CandidateObservation) -> str | None:
+    """Name the reason a reported value can never export as a score, or return None.
+
+    These hold regardless of what a reviewer later says about the tuple. A value printed
+    with an explicit leading sign is a difference when the anchor or the candidate's own
+    description uses difference wording, and a bare leading plus sign is difference
+    notation by itself: no absolute score is printed with one. A value outside the bounds
+    its metric declares is not a score on that scale at all. A small value with a percent
+    unit is deliberately not a signal here; 0.8% is an ordinary error rate.
+    """
+
+    if candidate.metric is None or candidate.value is None:
+        return None
+    raw = candidate.value.raw
+    if _LEADING_SIGN.match(raw) and (
+        _LEADING_PLUS.match(raw)
+        or any(_DIFFERENCE_WORDING.search(text) for text in _difference_wording_texts(candidate))
+    ):
+        return SIGNED_DIFFERENCE_BLOCKER
+    return registry_value_range_issue(candidate.metric, candidate.value)
+
+
 def _provenance_item_gates(candidate: CandidateObservation, item: CandidateFieldProvenance) -> bool:
     """Free-text descriptive setting components never gate export.
 
@@ -485,6 +623,14 @@ def apply_export_policy(candidate: CandidateObservation, min_confidence: float =
     elif candidate.text_support != TextSupportStatus.SUPPORTED:
         candidate.export_status = ExportStatus.NEEDS_REVIEW
         candidate.export_reason = f"text_support={candidate.text_support}"
+    elif (blocker := value_export_blocker(candidate)) is not None:
+        candidate.export_status = ExportStatus.NEEDS_REVIEW
+        candidate.export_reason = f"value_blocker={blocker}"
+    elif candidate.support_match_mode is SupportMatchMode.CONSECUTIVE_LINES:
+        # Whole consecutive lines are evidence a reviewer can accept; the deterministic
+        # tier keeps the stricter exact single-line contract.
+        candidate.export_status = ExportStatus.NEEDS_REVIEW
+        candidate.export_reason = f"support_match_mode={candidate.support_match_mode}"
     elif candidate.referential_status != ReferentialStatus.RESOLVED:
         candidate.export_status = ExportStatus.NEEDS_REVIEW
         candidate.export_reason = f"referential_status={candidate.referential_status}"
@@ -801,6 +947,8 @@ def _route_attribution(
     candidates: list[CandidateObservation],
     layouts: dict[str, PdfLayout],
     origin_policy: OriginExportPolicy = OriginExportPolicy.POSITIVE_ONLY,
+    context: PaperContext | None = None,
+    lexicon: AttributionLexicon | None = None,
 ) -> None:
     """Attach a deterministic attribution verdict and demote what it places elsewhere.
 
@@ -817,7 +965,7 @@ def _route_attribution(
     bases a composition run is willing to export, which every record then carries.
     """
 
-    lexicon = load_lexicon()
+    lexicon = lexicon or load_lexicon()
     indexes = {source_id: build_region_index(layout) for source_id, layout in layouts.items()}
     pages = {
         source_id: {fragment.page: fragment for fragment in layout.pages}
@@ -830,6 +978,7 @@ def _route_attribution(
             indexes.get(anchor.source_id, {}).get(anchor.page),
             pages.get(anchor.source_id, {}).get(anchor.page),
             lexicon,
+            context,
         )
         candidate.attribution = verdict
         if origin_policy.permits(verdict.origin_basis(candidate.claim_type)):
@@ -914,16 +1063,20 @@ def route_candidate_attribution(
     candidates: list[CandidateObservation],
     layouts: dict[str, PdfLayout],
     origin_policy: OriginExportPolicy = OriginExportPolicy.POSITIVE_ONLY,
+    context: PaperContext | None = None,
+    lexicon: AttributionLexicon | None = None,
 ) -> list[CandidateObservation]:
     """Attach conservative producer-origin verdicts after independent checks.
 
     This step is intentionally in-place and demote-only. Keeping it separate from
     non-origin validation lets an independent verifier inspect candidates that pass
     the result, tuple, scope, confidence, and conflict gates before unresolved origin
-    routes them to review.
+    routes them to review. `context` is the paper-level prior read from the source
+    manifest; without it the paper-context cues stay silent. `lexicon` lets a replay
+    run under the lexicon a finished run recorded instead of the current default.
     """
 
-    _route_attribution(candidates, layouts, origin_policy)
+    _route_attribution(candidates, layouts, origin_policy, context, lexicon)
     return candidates
 
 
@@ -933,6 +1086,8 @@ def validate_candidates(
     min_confidence: float = 0.8,
     processed_source_ids: set[str] | None = None,
     origin_policy: OriginExportPolicy = OriginExportPolicy.POSITIVE_ONLY,
+    context: PaperContext | None = None,
+    lexicon: AttributionLexicon | None = None,
 ) -> list[CandidateObservation]:
     """Run all candidate gates in place, including conservative attribution routing."""
 
@@ -942,7 +1097,7 @@ def validate_candidates(
         min_confidence=min_confidence,
         processed_source_ids=processed_source_ids,
     )
-    _route_attribution(validated, layouts, origin_policy)
+    _route_attribution(validated, layouts, origin_policy, context, lexicon)
     return validated
 
 

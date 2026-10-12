@@ -116,16 +116,16 @@ class BakeoffCaseSpec(StrictModel):
 class BakeoffSegmentation(StrictModel):
     """Serialized form of the production result-block settings."""
 
-    max_lines: int = Field(default=40, ge=2)
+    max_lines: int = Field(default=60, ge=2)
     max_characters: int = Field(default=6_000, ge=128)
     context_lines: int = Field(default=8, ge=0)
     trailing_context_lines: int = Field(default=2, ge=0)
     overlap_lines: int = Field(default=3, ge=0)
     signal_gap_lines: int = Field(default=3, ge=0)
     max_blank_gap: int = Field(default=1, ge=0)
-    max_data_rows: int | None = Field(default=6, ge=1)
+    max_data_rows: int | None = Field(default=14, ge=1)
     min_signal_score: float = Field(default=1.5, gt=0.0)
-    max_blocks_per_page: int | None = Field(default=6, ge=1)
+    max_blocks_per_page: int | None = Field(default=None, ge=1)
 
     def production_config(self) -> ResultBlockConfig:
         return ResultBlockConfig(**self.model_dump())

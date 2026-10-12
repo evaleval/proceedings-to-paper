@@ -10,6 +10,11 @@ from typer.testing import CliRunner
 from proceedings_to_eee import cli
 from proceedings_to_eee.cli import app
 from proceedings_to_eee.composition.eee import compose_eee_records
+from proceedings_to_eee.domain.attribution import (
+    AttributionCue,
+    AttributionState,
+    AttributionVerdict,
+)
 from proceedings_to_eee.domain.export_provenance import (
     legacy_export_provenance,
     tuple_gated_export_provenance,
@@ -45,8 +50,8 @@ from proceedings_to_eee.sources.manifest import SourceManifest
 from proceedings_to_eee.validation.eee_schema import load_schema, validate_eee_record
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = PROJECT_ROOT / "schemas" / "eee-0.2.2" / "eval.schema.json"
-SCHEMA_SHA256 = "088fed8029d42fb3a607aa67e1a05c39e425241b5cd90803705b37562f402f2a"
+SCHEMA = PROJECT_ROOT / "schemas" / "eee-0.3.0" / "eval.schema.json"
+SCHEMA_SHA256 = "c9c6195aec8a9dfa0b2aba4924ac1aa8a184c9d8ca97cee778cb531088e39b48"
 
 
 def _provider_request_contract(
@@ -385,16 +390,17 @@ def _private_inputs(
                     ),
                     "review_state": {"status": "ready", "reasons": []},
                     "result_block_segmentation": {
-                        "max_lines": 40,
+                        "max_lines": 60,
                         "max_characters": 6_000,
                         "context_lines": 8,
                         "trailing_context_lines": 2,
                         "overlap_lines": 3,
                         "signal_gap_lines": 3,
                         "max_blank_gap": 1,
-                        "max_data_rows": 6,
+                        "max_data_rows": 14,
+                        "max_numeric_cells": 24,
                         "min_signal_score": 1.5,
-                        "max_blocks_per_page": 6,
+                        "max_blocks_per_page": None,
                     },
                     "candidate_validation": {
                         "schema_version": "candidate-validation/0.1",
@@ -636,16 +642,17 @@ def _private_inputs(
                 "prompt_sha256": "b" * 64,
                 "reference_prompt_isolation": True,
                 "segmentation": {
-                    "max_lines": 40,
+                    "max_lines": 60,
                     "max_characters": 6_000,
                     "context_lines": 8,
                     "trailing_context_lines": 2,
                     "overlap_lines": 3,
                     "signal_gap_lines": 3,
                     "max_blank_gap": 1,
-                    "max_data_rows": 6,
+                    "max_data_rows": 14,
+                    "max_numeric_cells": 24,
                     "min_signal_score": 1.5,
-                    "max_blocks_per_page": 6,
+                    "max_blocks_per_page": None,
                 },
             },
             "request_contract": selection_request_contract,
@@ -1371,7 +1378,7 @@ def test_finalized_paid_stage_requires_exact_returned_model_for_every_call(
         )
 
 
-@pytest.mark.parametrize("run_status", ["bounded_incomplete", "error"])
+@pytest.mark.parametrize("run_status", ["bounded_incomplete", "budget_stopped", "error"])
 def test_unfinished_run_preserves_unverified_returned_model_lower_bound(
     tmp_path: Path,
     manifest: SourceManifest,
@@ -2655,7 +2662,7 @@ def test_current_tuple_gated_composer_shape_reprojects_exactly(
     records = compose_eee_records(
         manifest=manifest,
         candidates=[eligible_candidate],
-        schema_version="0.2.2",
+        schema_version="0.3.0",
         provenance=provenance,
     )
     assert len(records) == 1
@@ -2666,6 +2673,67 @@ def test_current_tuple_gated_composer_shape_reprojects_exactly(
         )
         == records[0]
     )
+
+
+def test_attribution_cue_ids_survive_the_public_projection(
+    manifest: SourceManifest,
+    eligible_candidate: CandidateObservation,
+) -> None:
+    cued = eligible_candidate.model_copy(
+        update={
+            "attribution": AttributionVerdict(
+                state=AttributionState.PAPER_PRODUCED,
+                rule_id="explicit_test_fixture",
+                cues=[
+                    AttributionCue(cue_id="rank_column", scope="table_header", matched_text="Rank")
+                ],
+            )
+        }
+    )
+    records = compose_eee_records(
+        manifest=manifest,
+        candidates=[cued],
+        schema_version="0.2.2",
+        provenance=legacy_export_provenance([cued], reason="public_snapshot_fixture"),
+    )
+
+    projected = _project_composer_eee_record(
+        records[0], paper_id=manifest.paper_id, context="production EEE"
+    )
+
+    assert projected == records[0]
+    details = projected["evaluation_results"][0]["score_details"]["details"]
+    assert details["attribution_cues"] == "rank_column"
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "message"),
+    [
+        (("score_details", "details", "metric_identity_source"), "guessed", "unsupported"),
+        (("score_details", "details", "metric_bounds"), "model", "unsupported"),
+        (("model_info", "additional_details", "deployment_type"), "self_deployed", "composer"),
+    ],
+)
+def test_metric_and_deployment_labels_outside_the_composer_vocabulary_are_rejected(
+    manifest: SourceManifest,
+    eligible_candidate: CandidateObservation,
+    path: tuple[str, ...],
+    value: str,
+    message: str,
+) -> None:
+    [record] = compose_eee_records(
+        manifest=manifest,
+        candidates=[eligible_candidate],
+        schema_version="0.3.0",
+        provenance=legacy_export_provenance([eligible_candidate], reason="fixture"),
+    )
+    target = record["evaluation_results"][0] if path[0] == "score_details" else record
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+
+    with pytest.raises(PublicSnapshotError, match=message):
+        _project_composer_eee_record(record, paper_id=manifest.paper_id, context="production EEE")
 
 
 @pytest.mark.parametrize(
@@ -3143,4 +3211,4 @@ def test_validate_eee_cli_uses_pinned_default_schema(
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload == {"schema": "0.2.2", "issues": []}
+    assert payload == {"schema": "0.3.0", "issues": []}

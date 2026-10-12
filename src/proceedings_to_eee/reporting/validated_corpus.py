@@ -27,11 +27,8 @@ from proceedings_to_eee.domain.lineage import build_candidate_lineage
 from proceedings_to_eee.domain.observation import CandidateObservation
 from proceedings_to_eee.domain.status import ClaimType, ExportStatus
 from proceedings_to_eee.extraction.llm import RowEnumerationOutcome
-from proceedings_to_eee.extraction.result_blocks import (
-    ResultBlock,
-    ResultBlockConfig,
-    segment_page_result_blocks,
-)
+from proceedings_to_eee.extraction.page_blocks import segment_result_pages
+from proceedings_to_eee.extraction.result_blocks import ResultBlock, ResultBlockConfig
 from proceedings_to_eee.extraction.row_enumeration import (
     RowEnumerationConfig,
     RowEnumerationPlan,
@@ -72,16 +69,17 @@ from proceedings_to_eee.pipeline import (
     _verifier_run_configuration,
 )
 from proceedings_to_eee.providers.openrouter import ProviderCall, public_provider_call
+from proceedings_to_eee.resolution.attribution import (
+    AttributionLexicon,
+    load_lexicon,
+    load_recorded_lexicon,
+    paper_context_from_title,
+)
 from proceedings_to_eee.resolution.origin_retrieval import candidate_origin_binding_sha256
 from proceedings_to_eee.resolution.tuple_resolution import (
     TupleResolutionDecision,
     tuple_assessment_is_export_concordant,
     tuple_candidate_binding_sha256,
-)
-from proceedings_to_eee.resources import (
-    DEFAULT_EEE_SCHEMA_PATH,
-    EEE_SCHEMA_SHA256,
-    EEE_SCHEMA_VERSION,
 )
 from proceedings_to_eee.reviewed_export.workflow import ReviewedExportError, _load_run_papers
 from proceedings_to_eee.run_seal import (
@@ -98,6 +96,7 @@ from proceedings_to_eee.validation.candidates import (
     route_candidate_attribution,
     validate_non_origin_candidates,
 )
+from proceedings_to_eee.validation.eee_schema import SchemaAuthority, vendored_schema_authority
 from proceedings_to_eee.verification.binding import bind_candidate_block, frozen_evidence_block
 from proceedings_to_eee.verification.independent import IndependentDecision
 
@@ -244,6 +243,21 @@ def _fail(message: str) -> None:
     raise CompletedCorpusValidationError(message)
 
 
+def _vendored_schema_authority(schema: Mapping[str, Any]) -> SchemaAuthority:
+    """Bind a run's recorded EEE schema to the vendored copy it names.
+
+    Either vendored version is accepted: a completed run is replayed against the schema
+    it recorded, not against whatever the current default happens to be.
+    """
+
+    try:
+        return vendored_schema_authority(schema.get("version"), schema.get("sha256"))
+    except ValueError as error:
+        raise CompletedCorpusValidationError(
+            "EEE schema binding is not a vendored schema"
+        ) from error
+
+
 def _mapping(value: object, context: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         _fail(f"{context} is invalid")
@@ -265,6 +279,16 @@ def _integer(value: object, context: str) -> int:
 def _model_id(value: object, context: str) -> str:
     if not isinstance(value, str) or len(value) > 255 or _MODEL_ID.fullmatch(value) is None:
         _fail(f"{context} is invalid")
+    return value
+
+
+def _optional_block_cap(value: object) -> int | None:
+    """Read a recorded per-page block cap; ``None`` means every block was kept."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        _fail("recorded max_blocks_per_page is invalid")
     return value
 
 
@@ -368,7 +392,9 @@ def _paper_settings(run: Mapping[str, Any], paper_root: Path) -> PipelineSetting
     tuple_stage = _mapping(run.get("tuple_resolution"), "tuple configuration")
     verifier = _mapping(run.get("verifier"), "verifier configuration")
     origin = _mapping(run.get("origin_retrieval"), "origin configuration")
-    schema = _mapping(run.get("eee_schema"), "EEE schema binding")
+    schema_authority = _vendored_schema_authority(
+        _mapping(run.get("eee_schema"), "EEE schema binding")
+    )
     candidate_validation = _mapping(
         run.get("candidate_validation"), "candidate validation configuration"
     )
@@ -404,8 +430,8 @@ def _paper_settings(run: Mapping[str, Any], paper_root: Path) -> PipelineSetting
         )
         settings = PipelineSettings(
             project_root=paper_root,
-            schema_path=DEFAULT_EEE_SCHEMA_PATH,
-            schema_sha256=str(schema.get("sha256")),
+            schema_path=schema_authority.path,
+            schema_sha256=schema_authority.sha256,
             output_root=paper_root,
             model=extractor_model,
             min_confidence=float(min_confidence),
@@ -413,7 +439,7 @@ def _paper_settings(run: Mapping[str, Any], paper_root: Path) -> PipelineSetting
             temperature=extractor.get("temperature"),
             reasoning_effort=extractor.get("reasoning_effort"),
             seed=(int(extractor["seed"]) if extractor.get("seed") is not None else None),
-            max_blocks_per_page=int(
+            max_blocks_per_page=_optional_block_cap(
                 _mapping(run.get("result_block_segmentation"), "block segmentation").get(
                     "max_blocks_per_page"
                 )
@@ -509,11 +535,9 @@ def _replayed_blocks(paper: Any, run: Mapping[str, Any]) -> list[ResultBlock]:
         pages_by_number
     ):
         _fail("selected pages do not belong to the frozen layout")
-    replayed = [
-        block
-        for page_number in selected_pages
-        for block in segment_page_result_blocks(pages_by_number[page_number], config=config)
-    ]
+    replayed = segment_result_pages(
+        paper.layout, [pages_by_number[page_number] for page_number in selected_pages], config
+    ).blocks
     if [item.model_dump(mode="json") for item in persisted] != [
         item.model_dump(mode="json") for item in replayed
     ]:
@@ -557,6 +581,32 @@ def _source_processing(paper: Any, run: Mapping[str, Any]) -> SourceProcessingAr
     if binding.get("counts") != artifact.counts.model_dump(mode="json"):
         _fail("source-processing counts are invalid")
     return artifact
+
+
+def _recorded_lexicon(candidates: Sequence[CandidateObservation]) -> AttributionLexicon:
+    """The attribution lexicon the run's own verdicts recorded, loaded from the shipped copy.
+
+    The replay must attribute under that lexicon, not under the current default, or the
+    verdicts it reproduces differ from the ones on file. One run records one lexicon.
+    A verdict the origin stage rewrote names none, and a run without any lexicon-bound
+    verdict replays under the default, where the observation comparison still catches
+    any difference.
+    """
+
+    recorded = {
+        (candidate.attribution.lexicon_id, candidate.attribution.lexicon_sha256)
+        for candidate in candidates
+        if candidate.attribution is not None and candidate.attribution.lexicon_id is not None
+    }
+    if not recorded:
+        return load_lexicon()
+    if len(recorded) != 1:
+        _fail("paper candidates record more than one attribution lexicon")
+    lexicon_id, sha256 = next(iter(recorded))
+    try:
+        return load_recorded_lexicon(lexicon_id, sha256)
+    except ValueError as error:
+        raise CompletedCorpusValidationError(str(error)) from error
 
 
 def _replay_paper(paper: Any) -> tuple[ValidatedPaperReceipt, tuple[ProviderCall, ...]]:
@@ -1087,7 +1137,12 @@ def _replay_paper(paper: Any) -> tuple[ValidatedPaperReceipt, tuple[ProviderCall
     elif _regular_jsonl(paper_root / "verifications.jsonl", "disabled verifier result ledger"):
         _fail("disabled verifier stage retains verification results")
 
-    candidates = route_candidate_attribution(candidates, {paper.layout.source_id: paper.layout})
+    candidates = route_candidate_attribution(
+        candidates,
+        {paper.layout.source_id: paper.layout},
+        context=paper_context_from_title(paper.source_manifest.title),
+        lexicon=_recorded_lexicon(paper.candidates),
+    )
     origin_stage = _mapping(run.get("origin_retrieval"), "origin stage")
     origin_calls: list[ProviderCall] = []
     origin_failures = 0
@@ -1516,8 +1571,7 @@ def validate_completed_corpus_run(run_root: Path) -> ValidatedCorpusReceipt:
     schema = _mapping(
         _shared([run.get("eee_schema") for run in runs], "EEE schema binding"), "EEE schema"
     )
-    if schema.get("version") != EEE_SCHEMA_VERSION or schema.get("sha256") != EEE_SCHEMA_SHA256:
-        _fail("current summary requires the pinned EEE schema")
+    schema_authority = _vendored_schema_authority(schema)
     extractor = _mapping(
         _shared(
             [_extractor_run_configuration(_paper_settings(run, root)) for run in runs],
@@ -1557,7 +1611,7 @@ def validate_completed_corpus_run(run_root: Path) -> ValidatedCorpusReceipt:
         paper_ids_sha256=str(paper_ids_sha256),
         generated_at=generated_at,
         code=dict(code),
-        eee_schema={"version": str(schema.get("version")), "sha256": str(schema.get("sha256"))},
+        eee_schema={"version": schema_authority.version, "sha256": schema_authority.sha256},
         extractor_binding=_configuration_binding(extractor),
         row_binding=_configuration_binding(row),
         candidate_validation=dict(candidate_validation),

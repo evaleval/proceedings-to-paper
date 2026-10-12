@@ -1,21 +1,26 @@
 from __future__ import annotations
 
+import pytest
+
 from proceedings_to_eee.domain.attribution import AttributionState
-from proceedings_to_eee.domain.observation import CandidateObservation, Uncertainty
+from proceedings_to_eee.domain.observation import CandidateObservation, MetricSpec, Uncertainty
 from proceedings_to_eee.domain.status import (
     ClaimType,
     ExportStatus,
+    SupportMatchMode,
     TextSupportStatus,
     ValueComparator,
 )
 from proceedings_to_eee.extraction.pdf_layout import PageFragment, PdfLayout
 from proceedings_to_eee.validation.candidates import (
+    apply_export_policy,
     bounded_claim_present,
     deduplicate_candidates,
     resolve_references,
     route_candidate_attribution,
     validate_candidates,
     validate_non_origin_candidates,
+    value_export_blocker,
 )
 
 
@@ -69,15 +74,16 @@ def test_numeric_claim_boundaries_reject_scientific_notation_substrings() -> Non
     assert bounded_claim_present("The value is 0.5e-3.", "0.5e-3")
 
 
-def _layout() -> PdfLayout:
+RESULT_PAGE_TEXT = "Table 2\nAtlas Moderation API  61.3  74.6%  58.2\n"
+
+
+def _layout(result_page_text: str = RESULT_PAGE_TEXT) -> PdfLayout:
     pages = [
         PageFragment(
             fragment_id=f"page-{number}",
             source_id="src_paper",
             page=number,
-            text=(
-                "empty\n" if number != 7 else "Table 2\nAtlas Moderation API  61.3  74.6%  58.2\n"
-            ),
+            text="empty\n" if number != 7 else result_page_text,
             text_sha256=str(number).zfill(64),
             character_count=5,
             numeric_token_count=3 if number == 7 else 0,
@@ -200,6 +206,83 @@ def test_whitespace_normalized_but_non_verbatim_quote_is_not_text_supported(
     [validated] = validate_candidates([eligible_candidate], {"src_paper": _layout()})
 
     assert validated.text_support is TextSupportStatus.UNSUPPORTED
+
+
+def _with_quote(candidate: CandidateObservation, quote: str) -> CandidateObservation:
+    candidate.evidence[0] = candidate.evidence[0].model_copy(
+        update={"quote": quote, "quote_sha256": None}
+    )
+    return candidate
+
+
+def test_single_line_support_is_recorded_and_stays_deterministically_eligible(
+    eligible_candidate: CandidateObservation,
+) -> None:
+    [validated] = validate_non_origin_candidates([eligible_candidate], {"src_paper": _layout()})
+
+    assert validated.support_match_mode is SupportMatchMode.SINGLE_LINE
+    assert validated.export_status is ExportStatus.ELIGIBLE
+
+
+def test_whole_consecutive_lines_support_a_multi_line_quote_but_only_for_review(
+    eligible_candidate: CandidateObservation,
+) -> None:
+    _with_quote(eligible_candidate, "Table 2\nAtlas Moderation API  61.3  74.6%  58.2")
+
+    [validated] = validate_non_origin_candidates([eligible_candidate], {"src_paper": _layout()})
+
+    assert validated.text_support is TextSupportStatus.SUPPORTED
+    assert validated.support_match_mode is SupportMatchMode.CONSECUTIVE_LINES
+    assert validated.export_status is ExportStatus.NEEDS_REVIEW
+    assert "support_match_mode=consecutive_lines" in (validated.export_reason or "")
+
+
+def test_whole_line_segments_ignore_layout_indentation_only(
+    eligible_candidate: CandidateObservation,
+) -> None:
+    layout = _layout("   Table 2\n      Atlas Moderation API  61.3  74.6%  58.2\n")
+    _with_quote(eligible_candidate, "Table 2\nAtlas Moderation API  61.3  74.6%  58.2")
+
+    [validated] = validate_candidates([eligible_candidate], {"src_paper": layout})
+
+    assert validated.text_support is TextSupportStatus.SUPPORTED
+
+
+@pytest.mark.parametrize(
+    ("result_page_text", "quote"),
+    [
+        # The second segment is a fragment of its line, not the whole line.
+        (RESULT_PAGE_TEXT, "Table 2\nAtlas Moderation API  61.3"),
+        # The segments are whole lines but not consecutive ones.
+        (
+            "Table 2\nSynthetic note.\nAtlas Moderation API  61.3  74.6%  58.2\n",
+            "Table 2\nAtlas Moderation API  61.3  74.6%  58.2",
+        ),
+        # The segments are whole consecutive lines in the wrong order.
+        (RESULT_PAGE_TEXT, "Atlas Moderation API  61.3  74.6%  58.2\nTable 2"),
+        # A trailing newline leaves a blank segment that only a blank page line could match.
+        (
+            "Table 2\nAtlas Moderation API  61.3  74.6%  58.2\n\nSynthetic note.\n",
+            "Atlas Moderation API  61.3  74.6%  58.2\n",
+        ),
+        # A blank line inside the quote is not evidence either.
+        (
+            "Table 2\n\nAtlas Moderation API  61.3  74.6%  58.2\n",
+            "Table 2\n\nAtlas Moderation API  61.3  74.6%  58.2",
+        ),
+    ],
+)
+def test_multi_line_quotes_that_are_not_whole_consecutive_lines_are_unsupported(
+    eligible_candidate: CandidateObservation, result_page_text: str, quote: str
+) -> None:
+    _with_quote(eligible_candidate, quote)
+
+    [validated] = validate_candidates(
+        [eligible_candidate], {"src_paper": _layout(result_page_text)}
+    )
+
+    assert validated.text_support is TextSupportStatus.UNSUPPORTED
+    assert validated.support_match_mode is None
 
 
 def test_raw_value_substring_inside_a_different_number_is_not_supported(
@@ -457,3 +540,124 @@ def test_structurally_contradictory_roles_and_fields_abstain(
     assert validated.export_status == ExportStatus.NEEDS_REVIEW
     assert validated.referential_status.value == "wrong_scope"
     assert "semantic safety check" in (validated.export_reason or "")
+
+
+def _with_value(
+    eligible_candidate: CandidateObservation, raw: str, numeric: float
+) -> CandidateObservation:
+    candidate = eligible_candidate.model_copy(deep=True)
+    candidate.value = candidate.value.model_copy(update={"raw": raw, "numeric": numeric})
+    return candidate
+
+
+def _negative_correlation(eligible_candidate: CandidateObservation) -> CandidateObservation:
+    """A signed value inside its metric's range, so only wording can call it a difference."""
+
+    candidate = _with_value(eligible_candidate, "-0.12", -0.12)
+    candidate.metric = MetricSpec(
+        raw_name="Spearman",
+        canonical_id="spearman",
+        kind="correlation",
+        lower_is_better=False,
+        min_score=-1.0,
+        max_score=1.0,
+    )
+    candidate.value = candidate.value.model_copy(update={"unit": None})
+    return candidate
+
+
+def test_a_signed_value_with_difference_wording_on_its_anchor_is_blocked(
+    eligible_candidate: CandidateObservation,
+) -> None:
+    candidate = _negative_correlation(eligible_candidate)
+    candidate.evidence[0].column = "Δ ρ"
+
+    assert value_export_blocker(candidate) == "signed_difference_value"
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["metric_name", "operationalization", "raw_scope", "notes"],
+)
+def test_a_signed_value_the_candidate_itself_calls_a_change_is_blocked(
+    eligible_candidate: CandidateObservation, field: str
+) -> None:
+    candidate = _negative_correlation(eligible_candidate)
+    if field == "metric_name":
+        candidate.metric.raw_name = "change in Spearman"
+    elif field == "operationalization":
+        candidate.operationalization = "improvement over the baseline"
+    elif field == "raw_scope":
+        candidate.scope.raw_scope = "gain vs. baseline"
+    else:
+        candidate.notes = ["Zero-shot percentual change in correlation."]
+
+    assert value_export_blocker(candidate) == "signed_difference_value"
+
+
+def test_a_bare_leading_plus_sign_is_difference_notation_by_itself(
+    eligible_candidate: CandidateObservation,
+) -> None:
+    candidate = _with_value(eligible_candidate, "+6.7", 6.7)
+
+    assert value_export_blocker(candidate) == "signed_difference_value"
+
+    apply_export_policy(candidate)
+    assert candidate.export_status == ExportStatus.NEEDS_REVIEW
+    assert candidate.export_reason == "value_blocker=signed_difference_value"
+
+
+@pytest.mark.parametrize(
+    "wording",
+    [
+        None,
+        # Stems inside other words do not call the number a difference.
+        "evaluated against the frozen baseline",
+        "hard difficulty subset",
+        "unchanged prompt, token exchange disabled",
+        "a different split",
+    ],
+)
+def test_a_negative_correlation_without_difference_wording_is_a_score(
+    eligible_candidate: CandidateObservation, wording: str | None
+) -> None:
+    candidate = _negative_correlation(eligible_candidate)
+    candidate.operationalization = wording
+
+    assert value_export_blocker(candidate) is None
+
+
+def test_a_small_percent_value_is_not_a_conflict_signal(
+    eligible_candidate: CandidateObservation,
+) -> None:
+    candidate = _with_value(eligible_candidate, "0.8%", 0.8)
+    candidate.metric = MetricSpec(
+        raw_name="FPR",
+        canonical_id="fpr",
+        kind="false_positive_rate",
+        unit="percent",
+        lower_is_better=True,
+        min_score=0.0,
+        max_score=100.0,
+    )
+
+    assert value_export_blocker(candidate) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "numeric", "blocker"),
+    [
+        ("146%", 146.0, "value_outside_registry_metric_bounds"),
+        ("-1.2%", -1.2, "value_outside_registry_metric_bounds"),
+    ],
+)
+def test_a_value_outside_its_metric_bounds_is_blocked_with_a_dedicated_reason(
+    eligible_candidate: CandidateObservation, raw: str, numeric: float, blocker: str
+) -> None:
+    candidate = _with_value(eligible_candidate, raw, numeric)
+
+    assert value_export_blocker(candidate) == blocker
+
+    apply_export_policy(candidate)
+    assert candidate.export_status == ExportStatus.NEEDS_REVIEW
+    assert candidate.export_reason == f"value_blocker={blocker}"

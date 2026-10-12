@@ -43,14 +43,18 @@ from proceedings_to_eee.reporting.validated_corpus import (
     empty_source_provenance_counts,
     validate_completed_corpus_run,
 )
-from proceedings_to_eee.resources import DEFAULT_EEE_SCHEMA_PATH
 from proceedings_to_eee.reviewed_export.models import DerivedRunManifest
 from proceedings_to_eee.reviewed_export.workflow import (
     DERIVED_MANIFEST_NAME,
     ReviewedExportError,
     verify_contextual_derived_run,
 )
-from proceedings_to_eee.validation.eee_schema import load_schema, validate_eee_record
+from proceedings_to_eee.validation.eee_schema import (
+    SchemaAuthority,
+    load_schema,
+    validate_eee_record,
+    vendored_schema_authority,
+)
 
 PUBLIC_DEVELOPMENT_SUMMARY_SCHEMA_VERSION = "public-development-summary/0.3"
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
@@ -196,9 +200,9 @@ def _validate_eee_outputs(
     runs: Sequence[Mapping[str, Any]],
     exported_ids: set[str],
     expected_records: int,
-    schema_sha256: str,
+    authority: SchemaAuthority,
 ) -> None:
-    schema, _ = load_schema(DEFAULT_EEE_SCHEMA_PATH, schema_sha256)
+    schema, _ = load_schema(authority.path, authority.sha256)
     result_ids: list[str] = []
     record_count = 0
     for run in runs:
@@ -771,8 +775,12 @@ def _build_legacy_public_development_summary(run_root: Path) -> dict[str, Any]:
     if not isinstance(code_binding.get("git_dirty"), bool):
         raise PublicDevelopmentSummaryError("git_dirty must be boolean")
     eee_schema_sha256 = _sha256(eee_binding.get("sha256"), "EEE schema SHA-256")
-    if eee_binding.get("version") != "0.2.2":
-        raise PublicDevelopmentSummaryError("public summary requires EEE schema 0.2.2")
+    try:
+        schema_authority = vendored_schema_authority(eee_binding.get("version"), eee_schema_sha256)
+    except ValueError as error:
+        raise PublicDevelopmentSummaryError(
+            "public summary requires a vendored EEE schema"
+        ) from error
     if totals["eee_schema_issues"] != 0:
         raise PublicDevelopmentSummaryError("successful public run has EEE schema issues")
     _validate_eee_outputs(
@@ -780,7 +788,7 @@ def _build_legacy_public_development_summary(run_root: Path) -> dict[str, Any]:
         runs,
         {candidate.observation_id for candidate in exported if candidate.observation_id},
         totals["eee_records"],
-        eee_schema_sha256,
+        schema_authority,
     )
     row_dispositions: Counter[str] = Counter()
     for full_plan, outcome, execution, call_count, attempt_count in zip(
@@ -938,8 +946,8 @@ def _build_legacy_public_development_summary(run_root: Path) -> dict[str, Any]:
             "extractor": legacy_binding,
             "row_extractor": row_binding,
             "eee_schema": {
-                "version": eee_binding.get("version"),
-                "sha256": eee_schema_sha256,
+                "version": schema_authority.version,
+                "sha256": schema_authority.sha256,
             },
             "attribution": attribution_binding,
         },

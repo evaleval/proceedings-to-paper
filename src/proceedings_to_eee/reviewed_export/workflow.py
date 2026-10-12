@@ -82,6 +82,7 @@ from proceedings_to_eee.reviewed_export.models import (
 from proceedings_to_eee.run_seal import RunSealVerificationError, verify_run_seal
 from proceedings_to_eee.sources.manifest import SourceManifest
 from proceedings_to_eee.validation.candidates import (
+    SIGNED_DIFFERENCE_BLOCKER,
     bounded_claim_present,
     normalize_evidence_text,
     validate_non_origin_candidates,
@@ -2905,6 +2906,17 @@ def _bind_original_run(run_root: Path, review: ValidatedReview) -> dict[str, _Ru
     return originals
 
 
+_VALUE_BLOCKER_PREFIX = "value_blocker="
+#: Review-item codes for the export reasons `value_export_blocker` can emit. A human
+#: attestation speaks to the tuple, so none of these is curable in review; the code only
+#: tells the reviewer what the number is instead of a score.
+_VALUE_BLOCKER_CODES = {
+    SIGNED_DIFFERENCE_BLOCKER: "SIGNED_DIFFERENCE_VALUE",
+    "value_outside_registry_metric_bounds": "VALUE_OUTSIDE_METRIC_BOUNDS",
+    "uncertainty_interval_outside_registry_metric_bounds": "VALUE_OUTSIDE_METRIC_BOUNDS",
+}
+
+
 def _non_origin_failure_codes(
     candidate: CandidateObservation, *, min_confidence: float | None = None
 ) -> list[str]:
@@ -2923,6 +2935,9 @@ def _non_origin_failure_codes(
             codes.append("FIELD_PROVENANCE_CONFLICT")
         elif "field_provenance" in reason:
             codes.append("FIELD_PROVENANCE_UNSUPPORTED")
+        if reason.startswith(_VALUE_BLOCKER_PREFIX):
+            blocker = reason.removeprefix(_VALUE_BLOCKER_PREFIX)
+            codes.append(_VALUE_BLOCKER_CODES.get(blocker, "VALUE_NOT_A_SCORE"))
         if "extraction_confidence" in reason or (
             min_confidence is not None and candidate.extraction_confidence < min_confidence
         ):

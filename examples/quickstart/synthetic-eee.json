@@ -52,13 +52,15 @@
   ],
   "model_info": {
     "additional_details": {
-      "identity_status": "synthetic"
+      "deployment_type": "unknown",
+      "identity_status": "synthetic",
+      "model_availability": "unknown"
     },
     "id": "synthetic-system",
     "name": "Synthetic System"
   },
   "retrieved_timestamp": "1788200000",
-  "schema_version": "0.2.2",
+  "schema_version": "0.3.0",
   "source_metadata": {
     "additional_details": {
       "paper_id": "synthetic-paper"

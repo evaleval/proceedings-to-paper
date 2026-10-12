@@ -9,7 +9,8 @@ summarizes the existing development census without publishing its source materia
 - Python pipeline and CLI, including extraction, validation, review, composition,
   census processing, and evaluation tools.
 - Synthetic tests and examples that run without provider credentials.
-- EEE 0.2.2 schema, license, and deterministic metric/origin configuration.
+- EEE 0.3.0 and 0.2.2 schemas with their license, a curated snapshot of the EEE
+  metric registry, and deterministic metric/origin configuration.
 - A generated pipeline illustration and its editable source.
 - Aggregate counts with hashes binding them to the locally retained run summaries.
 

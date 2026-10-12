@@ -17,10 +17,28 @@ from proceedings_to_eee.domain.export_provenance import (
 from proceedings_to_eee.domain.observation import CandidateObservation, RoleAssignment
 from proceedings_to_eee.domain.provenance import CandidateField, FieldBindingStatus
 from proceedings_to_eee.domain.status import ActorRole, ExportStatus
+from proceedings_to_eee.resolution.metrics import (
+    REGISTRY_BACKED_SOURCES,
+    UNMARKED_PERCENT_NOTE,
+    metric_canonical_source,
+    unit_inference_note,
+)
 from proceedings_to_eee.sources.manifest import FrozenSource, SourceManifest
+from proceedings_to_eee.validation.eee_schema import schema_version_allows_null_bounds
 from proceedings_to_eee.validation.field_provenance import (
     literal_setting_components_are_bound,
 )
+
+#: How a result's exported bounds were established. `registry` means a registry-backed
+#: identity supplied them, through its explicit range or its unit-dependent rate scale;
+#: `inferred_percent` means that scale was reached by reading an unmarked value above one
+#: as a percent; `unresolved` means no bounds are exported.
+REGISTRY_BOUNDS = "registry"
+INFERRED_PERCENT_BOUNDS = "inferred_percent"
+UNRESOLVED_BOUNDS = "unresolved"
+#: 0.3.0 requires both, and the pipeline knows neither: a paper reports numbers, not
+#: how the system was hosted or licensed.
+_MODEL_DEPLOYMENT_DETAILS = {"deployment_type": "unknown", "model_availability": "unknown"}
 
 
 def _evaluated_system(candidate: CandidateObservation) -> RoleAssignment:
@@ -42,6 +60,16 @@ def _evaluation_system_key(system_id: str, version: str | None) -> str:
     return f"{system_key}-version-{_stable_key(version)}"
 
 
+def _dataset_name(candidate: CandidateObservation) -> str:
+    """The bound inventory entry's name when a binding names one, else the raw string."""
+
+    assert candidate.scope is not None
+    binding = candidate.dataset_binding
+    if binding is not None and binding.binding_class.names_entry and binding.entry_name:
+        return binding.entry_name
+    return candidate.scope.dataset_raw
+
+
 def _scope_details(candidate: CandidateObservation) -> dict[str, str]:
     if candidate.scope is None:
         return {}
@@ -60,6 +88,24 @@ def _scope_details(candidate: CandidateObservation) -> dict[str, str]:
             details[name] = str(value)
     if candidate.scope.sample_count is not None:
         details["samples_number_reported"] = str(candidate.scope.sample_count)
+    binding = candidate.dataset_binding
+    if binding is not None:
+        # The raw string always survives beside the bound name, with the class and rule
+        # that bound it, so a reader can see what the paper printed and why it was read
+        # as this entry. A derived split fills the split detail only when the candidate
+        # stated none, and says where it was read from.
+        details["dataset_raw"] = candidate.scope.dataset_raw
+        details["dataset_binding_class"] = binding.binding_class.value
+        details["dataset_binding_rule"] = binding.rule_id
+        if (
+            binding.split is not None
+            and binding.split_source is not None
+            and not details.get("split")
+        ):
+            details["split"] = binding.split
+            details["split_source"] = binding.split_source.value
+        if binding.binding_class.names_entry and binding.languages and not details.get("language"):
+            details["language"] = " | ".join(binding.languages)
     return details
 
 
@@ -67,19 +113,54 @@ def _source_data(candidate: CandidateObservation) -> dict[str, Any]:
     assert candidate.scope is not None
     if candidate.scope.dataset_url:
         return {
-            "dataset_name": candidate.scope.dataset_raw,
+            "dataset_name": _dataset_name(candidate),
             "source_type": "url",
             "url": [candidate.scope.dataset_url],
             "additional_details": _scope_details(candidate),
         }
     return {
-        "dataset_name": candidate.scope.dataset_raw,
+        "dataset_name": _dataset_name(candidate),
         "source_type": "other",
         "additional_details": _scope_details(candidate),
     }
 
 
-def _metric_config(candidate: CandidateObservation) -> dict[str, Any]:
+def _dataset_inventory_sha256(observations: Sequence[CandidateObservation]) -> str | None:
+    """The inventory gate the record's bindings were computed from; one per paper."""
+
+    for candidate in observations:
+        if candidate.dataset_binding is not None:
+            return candidate.dataset_binding.inventory_sha256
+    return None
+
+
+def metric_bounds_basis(candidate: CandidateObservation) -> str:
+    """Say how a candidate's bounds were established, or that no bounds may be exported.
+
+    Only a registry-backed identity carries bounds into a record. A model-proposed scale
+    is not a fact the pipeline established, so it is left out and labelled exactly like a
+    metric whose scale nobody knows; the candidate itself keeps whatever it proposed.
+    `inferred_percent` names the values whose unit the unmarked-value rule supplied: the
+    rule left its note on the candidate when it fired, and the derivation must still
+    reproduce the stored unit, so a stale note from earlier evidence cannot keep the label.
+    """
+
+    metric, value = candidate.metric, candidate.value
+    if metric is None or value is None or metric.min_score is None or metric.max_score is None:
+        return UNRESOLVED_BOUNDS
+    if metric_canonical_source(metric) not in REGISTRY_BACKED_SOURCES:
+        return UNRESOLVED_BOUNDS
+    if UNMARKED_PERCENT_NOTE in candidate.notes and (
+        unit_inference_note(metric, value, (anchor.quote for anchor in candidate.evidence))
+        == UNMARKED_PERCENT_NOTE
+    ):
+        return INFERRED_PERCENT_BOUNDS
+    return REGISTRY_BOUNDS
+
+
+def _metric_config(
+    candidate: CandidateObservation, *, bounds_basis: str, null_bounds: bool
+) -> dict[str, Any]:
     assert candidate.metric is not None
     metric = candidate.metric
     config: dict[str, Any] = {
@@ -90,14 +171,15 @@ def _metric_config(candidate: CandidateObservation) -> dict[str, Any]:
         "metric_parameters": metric.parameters,
         "lower_is_better": metric.lower_is_better,
     }
-    # `score_type` is always stated. EEE 0.2.2 requires `level_names` and
-    # `has_unknown_level` when score_type is "levels", and its `if` clause carries no
-    # `required`, so an absent score_type satisfies it vacuously and the record is
-    # rejected for fields that describe a kind of score it does not have. Every value
-    # composed here is a numeric measurement, so "continuous" is the honest answer;
-    # the bounds are added only when the registry knows them.
+    # `score_type` is always stated. EEE requires `level_names` and `has_unknown_level`
+    # when score_type is "levels", and 0.2.2's `if` clause carries no `required`, so an
+    # absent score_type satisfies it vacuously and the record is rejected for fields that
+    # describe a kind of score it does not have. Every value composed here is a numeric
+    # measurement, so "continuous" is the honest answer. Bounds are stated only when a
+    # registry established them; a schema that can say "unknown" is told so explicitly.
     config["score_type"] = "continuous"
-    if metric.min_score is not None and metric.max_score is not None:
+    bounds_established = bounds_basis != UNRESOLVED_BOUNDS
+    if bounds_established:
         config.update({"min_score": metric.min_score, "max_score": metric.max_score})
     details: dict[str, str] = {}
     if candidate.evaluation_construct:
@@ -113,7 +195,10 @@ def _metric_config(candidate: CandidateObservation) -> dict[str, Any]:
         details["evaluation_instrument"] = " | ".join(instrument_names)
     if details:
         config["additional_details"] = details
-    return {key: value for key, value in config.items() if value is not None}
+    stated = {key: value for key, value in config.items() if value is not None}
+    if null_bounds and not bounds_established:
+        stated.update({"min_score": None, "max_score": None})
+    return stated
 
 
 def _evidence_provenance(
@@ -329,7 +414,18 @@ def compose_eee_records(
     schema_version: str,
     provenance: ExportCompositionProvenance,
 ) -> list[dict[str, Any]]:
-    """Group authorized paper-produced observations by evaluated system."""
+    """Group authorized paper-produced observations by evaluated system.
+
+    Eligibility is decided here from the deterministic verdict alone, and the provenance
+    must cover exactly that set: an authorization for a candidate the verdict does not
+    permit fails closed and names the candidate, so a promotion rule upstream can never
+    export past a recorded cue by accident.
+
+    `score_details.details.attribution_cues` lists the cue ids that fired on the
+    verdict, never the text they fired on. `export_composition_sha256` hashes the
+    provenance, not the record body, so this key is hash-neutral: records composed
+    before it existed keep their composition hash.
+    """
 
     candidates = list(candidates)
     policy = provenance.effective_origin_policy
@@ -343,7 +439,11 @@ def compose_eee_records(
     authorizations = {item.observation_id: item for item in provenance.authorizations}
     eligible_ids = {candidate.observation_id or candidate.stable_id() for candidate in eligible}
     if set(authorizations) != eligible_ids:
-        raise ValueError("export provenance does not exactly cover eligible candidates")
+        raise ValueError(
+            "export provenance does not exactly cover eligible candidates: "
+            f"authorized but not eligible {sorted(set(authorizations) - eligible_ids)}, "
+            f"eligible but not authorized {sorted(eligible_ids - set(authorizations))}"
+        )
     for candidate in eligible:
         observation_id = candidate.observation_id or candidate.stable_id()
         authorization = authorizations[observation_id]
@@ -364,6 +464,7 @@ def compose_eee_records(
         groups[(system.canonical_id or system.raw_name, system.version)].append(candidate)
     retrieved_at = max(source.retrieved_at for source in manifest.sources)
     sources = {source.source_id: source for source in manifest.sources}
+    null_bounds = schema_version_allows_null_bounds(schema_version)
     records: list[dict[str, Any]] = []
     ordered_groups = sorted(
         groups.items(),
@@ -385,7 +486,10 @@ def compose_eee_records(
             ),
         )
         role = _evaluated_system(observations[0])
-        model_details = {"identity_status": "canonical" if role.canonical_id else "raw_name"}
+        model_details = {
+            "identity_status": "canonical" if role.canonical_id else "raw_name",
+            **_MODEL_DEPLOYMENT_DETAILS,
+        }
         if role.version:
             model_details["reported_version"] = role.version
         model_info: dict[str, Any] = {
@@ -400,18 +504,26 @@ def compose_eee_records(
             assert candidate.scope and candidate.metric and candidate.value
             observation_id = candidate.observation_id or candidate.stable_id()
             authorization = authorizations[observation_id]
+            bounds_basis = metric_bounds_basis(candidate)
             result: dict[str, Any] = {
                 "evaluation_result_id": observation_id,
-                "evaluation_name": f"{candidate.scope.dataset_raw} / {candidate.metric.raw_name}",
+                "evaluation_name": f"{_dataset_name(candidate)} / {candidate.metric.raw_name}",
                 "source_data": _source_data(candidate),
-                "metric_config": _metric_config(candidate),
+                "metric_config": _metric_config(
+                    candidate, bounds_basis=bounds_basis, null_bounds=null_bounds
+                ),
                 "score_details": _score_details(candidate, sources),
             }
             result["score_details"]["details"].update(
                 {
+                    "metric_identity_source": metric_canonical_source(candidate.metric),
+                    "metric_bounds": bounds_basis,
                     "producer_origin_basis": _origin_basis(candidate, authorization).value,
                     "attribution_state": candidate.attribution.state.value,
                     "attribution_rule_id": candidate.attribution.rule_id,
+                    "attribution_cues": ";".join(
+                        dict.fromkeys(cue.cue_id for cue in candidate.attribution.cues)
+                    ),
                     "review_tier": _review_tier(candidate, authorization).value,
                     "referential_status": candidate.referential_status.value,
                     "field_provenance_gate": _field_provenance_gate(candidate),
@@ -456,6 +568,7 @@ def compose_eee_records(
             if candidate.evaluation_date:
                 result["evaluation_timestamp"] = candidate.evaluation_date
             evaluation_results.append(result)
+        inventory_sha256 = _dataset_inventory_sha256(observations)
         record = {
             "schema_version": schema_version,
             "evaluation_id": (
@@ -497,6 +610,11 @@ def compose_eee_records(
                     **(
                         {"verifier_sidecar_sha256": provenance.verifier_sidecar_sha256}
                         if provenance.verifier_sidecar_sha256 is not None
+                        else {}
+                    ),
+                    **(
+                        {"dataset_inventory_sha256": inventory_sha256}
+                        if inventory_sha256 is not None
                         else {}
                     ),
                 },
