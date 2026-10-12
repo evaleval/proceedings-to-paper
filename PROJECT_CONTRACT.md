@@ -10,13 +10,26 @@ One immutable Candidate Observation represents one reported value for one evalua
 
 ## Model-stage boundaries
 
-The five model boundaries are `block_candidate_extraction`, `row_disposition`,
-`tuple_resolution`, `independent_verification`, and `origin_retrieval`. Extractor and
-row outputs are untrusted proposals that converge at deterministic evidence,
-physical-cell, conflict, and deduplication checks. Candidate-level execution then has
-one safe order: tuple gate -> verifier gate -> origin assessment. Configuration rejects
-a verifier without a tuple model and origin retrieval without a verifier before source
-or provider work.
+The five candidate-chain model boundaries are `block_candidate_extraction`,
+`row_disposition`, `tuple_resolution`, `independent_verification`, and
+`origin_retrieval`. Extractor and row outputs are untrusted proposals that converge at
+deterministic evidence, physical-cell, conflict, and deduplication checks.
+Candidate-level execution then has one safe order: tuple gate -> verifier gate ->
+origin assessment. Configuration rejects a verifier without a tuple model and origin
+retrieval without a verifier before source or provider work.
+
+The sixth model boundary, `dataset_inventory`, is annotation-only and sits beside the
+chain rather than in it. One bounded call per paper proposes the datasets, subtasks and
+benchmarks the paper evaluates on, each with page-anchored verbatim quotes.
+Deterministic code re-finds every quote and every printed name on the frozen layout
+and drops any entry without a verified anchor or an unprinted name, binds candidates
+to the surviving entries by fixed rules (exact name or alias; single entry named by
+the anchored table's caption or header, only for a raw string that names nothing
+beyond it; sole entry of a single-dataset paper), and composes the bound name into
+the record while keeping the raw string beside it. The inventory never writes
+`dataset_raw` or any field inside an observation id, a field-provenance hash or a
+review gate hash; the binding is a sidecar outside all three. Its error rate is
+unmeasured until human review.
 
 The production tuple call uses `require_parameters=true`, with the candidate's prior
 tuple fields withheld. Its proposal is locally evidence-checked and compared with the
@@ -115,7 +128,7 @@ The stored census snapshot used block extraction, optional rows, and a separate
 page-scoped review; it is not evidence for the complete optional model chain.
 Matched row quality needs a balanced human-labelled frame. Generalization claims
 require a frozen unseen sample and a predeclared scoring protocol. See
-[the evaluation status](docs/evaluation-status.md) for the dated measurements.
+[the results page](docs/results.md) for the dated measurements.
 
 ## Non-goals
 

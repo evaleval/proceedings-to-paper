@@ -7,7 +7,7 @@ candidates and exported records match the papers.
 
 The latest public status is a quote-free summary of saved artifacts dated
 2026-09-05. It is not a newly executed experiment. See
-[evaluation status](evaluation-status.md) for counts and their limits.
+[results page](results.md) for what the two runs produced.
 
 ## The scientific unit
 
@@ -35,8 +35,9 @@ the item to review. Equal numeric values can describe different physical table
 cells, so deduplication uses evidence and cell identity where available.
 
 An EEE record groups eligible observations by evaluated system within a paper.
-It is not the same unit as a candidate: the latest 317 tiered EEE records contain
-1,192 observations from 56 papers.
+It is not the same unit as a candidate: the September 2026 run exported 317 tiered
+EEE records that contain 1,192 observations from 56 papers (see the
+[results page](results.md)).
 
 ## The stages
 
@@ -48,12 +49,14 @@ It is not the same unit as a candidate: the latest 317 tiered EEE records contai
 | Resolve roles and scope | Check proposed systems, datasets, metrics, and settings | Names and context determine what the value means |
 | Check evidence and references | Check support, field bindings, cell conflicts, and optional independent readings | Finding a number is insufficient to establish a correct tuple |
 | Compose EEE | Apply the declared export policy in deterministic code | Models cannot grant themselves final export authority |
-| Validate the schema | Check records against pinned EEE 0.2.2 | Output structure must be reproducible |
+| Validate the schema | Check records against pinned EEE 0.3.0 (0.2.2 remains selectable) | Output structure must be reproducible |
 | Review | Preserve withheld items and gather separate human decisions | Uncertainty and failures must remain inspectable |
 
 The current parser uses Poppler text with layout preservation from selected PDF
 pages. It retains the surrounding table/header/caption context available in that
-layout. It does not digitize curves or bars in figure images. Supplements can be
+layout: a table's caption is the nearest unclaimed caption within twelve page lines,
+and it travels with the table into the extractor's context even when it lies beyond
+the ordinary context window. It does not digitize curves or bars in figure images. Supplements can be
 frozen and repository metadata recorded, but automated extraction adapters for
 those source types are not the current primary-PDF path.
 
@@ -73,6 +76,15 @@ The detailed tuple gate hides the extractor's tuple from a second reading. Code
 compares that reading with the original candidate and does not rewrite the candidate
 from it. Downstream verifier and origin artifacts bind the exact preceding gates.
 A failed or missing gate cannot be reused as a pass for a different candidate.
+
+A sixth, annotation-only model boundary inventories the datasets a paper evaluates on
+(`ere inventory-datasets`). It reads the title, every caption and the data, task,
+benchmark, experimental-setup, experiments and evaluation sections, and proposes
+entries with verbatim page-anchored quotes; code re-finds each quote on the frozen
+layout and drops entries without one. A separate deterministic step binds candidates
+to the surviving entries and composition prints the bound name while keeping the raw
+string. The inventory never changes a candidate; see
+[the dataset inventory section](#dataset-inventory-and-binding).
 
 Resumable checkpoints and budget limits make larger experiments operationally
 possible. They are engineering properties, not evidence of extraction quality.
@@ -94,6 +106,31 @@ is not positive origin evidence. Origin states therefore distinguish
 The detailed model origin stage cannot automatically promote a positive proposal
 to canonical paper-produced authority. External evidence can demote a candidate.
 
+The deterministic resolver reads its cues from a versioned lexicon
+(`configs/attribution-cues-v1.yaml`; v0 is kept so older runs' verdict hashes stay
+reproducible, and the sealed-run replay behind the public development summary
+attributes under the lexicon the run recorded, refusing one that is not shipped). Only
+a row-scoped cue can decide: an attributing phrase, author name, leaderboard or rank
+marker in the candidate's own row label makes a value `externally_sourced`. Every
+other cue abstains and is recorded on the verdict of each candidate anchored in the
+table, on every path, including rows the index could not trust: a citation bracket in
+the row label, a caption that describes reported or official results, a `Rank`-style
+header cell, and, for a paper whose title has the `<team> at <venue>` shape,
+`foreign_team_row` on rows that neither name that team nor refer to the paper itself
+(`overview_paper_rows` for an `Overview of ...` title). The two paper-context cues
+fire only in a table that carries one of the lexicon's declared `table_level_cues`
+(`rank_column`, `leaderboard_caption`); a caption that merely says `reported` is
+recorded but does not trigger them. Every cue carries the scope it was read from
+(`row_label`, `table_header`, `caption` or `paper_context`), so a verdict shows which
+cue could have decided. The paper kind and team name come from the frozen source
+manifest's title, never from a model, and a row that names the team is never marked
+foreign. Header cues are read from the table the region index itself vouches for: a
+table located only through the single-panel fallback of a two-column page carries no
+header cue, which can only leave a cue unrecorded, never grant export. A recorded cue
+is doubt, not silence, so such a candidate has no origin basis under any policy. Each
+exported result lists the ids of the cues that fired in
+`score_details.details.attribution_cues`; the matched text stays in the private run.
+
 ## Execution paths
 
 The repository contains several related paths. The existence of a stage in the code
@@ -104,6 +141,7 @@ does not mean that every saved experiment executed it.
 | Safeguarded corpus route | Extraction, optional rows, tuple concordance, independent verification, and origin retrieval when configured | The complete current route lacks independent end-to-end quality validation |
 | Census extraction and page review | Process many papers resumably, then ask a page-scoped reviewer about frozen candidates | This is not the complete five-stage model chain |
 | Offline census recomposition | Reapply deterministic processing and an explicit origin export policy to saved work | `tiered` records may retain unresolved checks and weaker origin bases |
+| Dataset inventory and binding | Ask a model which datasets a paper evaluates on, verify its quotes, bind candidates offline | Entries are verified proposals, not human labels; binding rules are structural |
 | Sealed human-reviewed export | Bind explicit human tuple/evidence/origin decisions to an immutable source run | It needs actual human attestations; a label alone is not a full export authorization |
 | Offline synthetic demo | Exercise source freezing, review, composition, and integrity locally | Synthetic success does not measure performance on papers |
 
@@ -147,6 +185,103 @@ referential or field-provenance checks and carry those states in the record. Thi
 is a material relaxation relative to the canonical route. Schema validation and the
 review tier must not be presented as a replacement for those checks.
 
+Its promotion rule is that the cue wins. A reviewer `accept` earns the
+`model_reviewed_origin_quote` basis only when the deterministic verdict recorded no
+cue and is not externally sourced; otherwise the candidate is held back and counted
+as `skipped_cue_overrides_review`. The one exception is a row whose label names the
+paper itself ("Ours", "Our system", "This work"): the table-level cues recorded on
+that row describe the table rather than the row, so they are kept in the record
+without holding it back (rule `self_reference_row`, lexicon v2). An `accept_tuple_only` the reviewer itself proposed
+without an origin quote is the reviewer withholding origin, so it grants nothing
+(`skipped_reviewer_withheld_origin`); one that still carries an origin quote keeps
+whatever basis the verdict allows, and when that is none the recorded reason names
+the state, the rule and the cue ids that held it back. The replay attributes under
+the current default lexicon on purpose, so a lexicon newer than the run's can add
+cues the run never saw; the summary names the lexicon it used. Composition fails
+closed, naming the candidate, if an authorization ever disagrees with the verdict.
+`ere recompose-census` also has an opt-in `--demote-reviewer-flagged-origin` flag,
+off by default, which reads the run's private review log and withholds a
+reviewer-accepted candidate whose rationale describes another party's result; only
+the count and a reason code reach the summary, never the rationale text. The summary
+records every held-back candidate under `review_demotion_counts`, together with cue
+firings by id and the number of rows that name the title's team inside cue-bearing
+tables.
+
+## Dataset inventory and binding
+
+In the saved census, 38% of exported values carried a dataset string that is not a
+name on its own (`Table 1`, a split word, a language, `Subtask`) and only 31% had a
+split, because the extractor sees one block at a time and the name usually stands in
+a caption or a data section elsewhere. The inventory stage closes that gap without
+touching the candidate.
+
+`ere inventory-datasets <run_root> [--paper-ids FILE] [--model ...]
+[--max-cost-usd ...] [--max-section-characters ...]` runs post-hoc over a finished
+run, one provider call per paper, under a budget ledger
+(`<run_root>/private/dataset-inventory-budget-ledger.jsonl`). `FILE` is a JSON list
+of paper ids, a JSON object with a `slugs` list, or one id per line. The prompt holds
+the manifest title, every caption from the region index on every page, and the
+layout text of the sections whose heading matches data, dataset, corpus, task,
+benchmark, experimental setup, experiments or evaluation, bounded by the character
+limit; the bound cuts the section text only, never the captions. The model answers
+with a strict schema: entries of `name_raw`, `aliases_in_paper`, `kind` (dataset,
+shared_task_subtask, benchmark, unknown), `languages`, `splits` with reported sizes,
+`introduced_here`, and `evidence` quotes with page numbers. It is told never to invent
+a name and to quote verbatim.
+
+Deterministic code then re-finds every quote, whitespace-normalised and nothing
+else, on the cited page of the frozen layout (page text or any of its regions); the
+gate records this as `quote_normalisation: whitespace_only`, and a quote the layout
+breaks with a line-end hyphen fails. An entry without one verified anchor is dropped
+and counted (`dropped_unverified`). The printed name must then occur somewhere in the
+layout, whitespace-collapsed and ignoring case, or the entry is dropped and counted
+(`dropped_unnamed`); an alias the layout does not print is removed and counted
+(`dropped_aliases`). A kind outside the vocabulary is malformed, not repaired. Two
+files result per paper: `<paper>/dataset-inventory.json`, quote-free, with entry ids
+(a hash of name and kind), names, aliases, kinds, languages, splits, anchors as page
+plus quote hash plus verified flag, the prompt, schema and model identifiers, what was
+sent as hashes, the call's cost, and the dropped counts; and
+`<paper>/private/dataset-inventory.jsonl` with the quotes. A paper whose gate already
+carries the current prompt and schema hashes is skipped, so a rerun resumes. The
+run-level `dataset-inventory-summary.json` totals entries by kind, drops, failures and
+cost and lists each gate's file hash. The default model is the census extractor model;
+the call uses the review stage's determinism settings.
+
+Binding happens inside `ere recompose-census`, after validation stamps the ids and
+before attribution, only for a paper that has an inventory; without one nothing
+changes. The rules run in order and the sidecar records which one fired:
+
+| Class | Rule | Fires when |
+| --- | --- | --- |
+| `exact` | `exact_name`, `exact_alias` | the normalised raw string (lower-case, punctuation stripped, spaces collapsed) equals one entry's name or alias |
+| `caption` | `caption_single_entry` | the caption or header row of the table the candidate is anchored in names exactly one entry, and the raw string names nothing beyond it: it is a split phrase (also after `our` or `the`), a generic word, a `Table N` reference or a language, or every content word of it occurs in the entry's name or aliases |
+| `unique` | `unique_split_word`, `unique_language_name`, `unique_generic_word`, `unique_table_reference` | the paper has exactly one dataset or subtask entry and the raw string is a split word, a language, a generic word (dataset, data, corpus, overall, all, total) or a `Table N` reference |
+| `none` | `none_exact_ambiguous`, `none_caption_ambiguous`, `none_caption_overrides_named_raw`, `none_no_rule_matched` | two entries match, the caption's single entry would narrow a raw string that names more (`Twitter and Fox News` against an entry `Twitter`), or no rule applies |
+
+When the candidate states no split, one is derived from the anchor's column header
+(`test`, `dev`, `development`, `validation`, `val`, `train`, `training`) or, failing
+that, from an attached caption saying `on the <split> set/split/data`, and stored
+with its source and page. The binding is the `dataset_binding` sidecar on the
+replayed candidate: `entry_id`, `rule_id`, `binding_class`, `entry_name`,
+`entry_kind`, `languages`, `splits`, `split`, `split_source`, `split_page` and the
+inventory gate hash. It is outside `stable_id()`, the field-provenance hashes and the
+review gate payload hash, so binding never changes an observation id or expires a
+gate, and `scope.dataset_raw` is never rewritten.
+
+Composition prints the bound entry's name as `source_data.dataset_name` and in
+`evaluation_name` for `exact`, `caption` and `unique` (the last is weaker and is
+visibly marked by its class). `source_data.additional_details` always keeps
+`dataset_raw`, `dataset_binding_class` and `dataset_binding_rule`, adds a derived
+`split` with `split_source` only when the split detail was empty, and takes
+`language` from the entry only when the candidate stated none.
+`source_metadata.additional_details.dataset_inventory_sha256` names the inventory
+the record was composed with: a hash of the gate's content without its telemetry, so
+a rerun that verifies the same entries under the same prompt, schema, model and input
+names the same inventory. The public snapshot allowlists carry every new key. The
+entries are model proposals with verified quotes and printed names; their error rate,
+and the binding rules' precision, are unmeasured until a human reviews the bound
+values.
+
 ## How development reached the current state
 
 Development began with a small paper pilot to test source freezing, candidate
@@ -166,15 +301,17 @@ the strict policy. Tiered exports are therefore useful research artifacts with
 explicit limitations, not evidence that those limitations have been solved.
 
 Older pilot counts and selected-target recall figures belong to their original
-experiments. They are not measurements of the present census or current public
+experiments. They are not measurements of the present runs or of the current public
 source snapshot. The public overview omits those historical rates to keep the
 current claim boundary clear.
 
 ## What the current evidence establishes
 
-The saved census establishes that the workflow processed 105 papers, retained 4,778
-candidates, found textual support for 4,202, and composed 317 schema-valid tiered
-records. Those facts establish extraction volume and software behavior.
+The saved September run establishes that the workflow processed 105 papers, retained
+4,778 candidates, found textual support for 4,202, and composed 317 schema-valid
+tiered records; the October rerun of ten of those papers, described on the
+[results page](results.md), establishes what the current code adds. Those facts
+establish extraction volume and software behavior.
 
 They do not establish candidate precision, complete-tuple correctness, producer-origin
 accuracy, whole-paper recall, or performance on unseen papers. A supported quote is

@@ -144,11 +144,18 @@ class ExportCompositionProvenance(StrictModel):
 
 
 def candidate_export_sha256(candidate: CandidateObservation) -> str:
-    """Hash export semantics, normalizing only the eligible→exported transition."""
+    """Hash export semantics, normalizing only the eligible→exported transition.
+
+    An absent dataset-binding sidecar is left out of the payload, so a candidate that
+    was never bound hashes exactly as it did before the sidecar existed; a bound one
+    hashes with its binding, which the record then visibly carries.
+    """
 
     payload = candidate.model_dump(mode="json")
     if payload.get("export_status") in {"eligible", "exported"}:
         payload["export_status"] = "eligible"
+    if payload.get("dataset_binding") is None:
+        payload.pop("dataset_binding", None)
     return sha256_bytes(canonical_json_bytes(payload))
 
 

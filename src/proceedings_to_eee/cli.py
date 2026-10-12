@@ -105,6 +105,20 @@ from proceedings_to_eee.reporting.public_reviewed_development_bundle import (
     build_public_reviewed_development_bundle,
     verify_public_reviewed_development_bundle,
 )
+from proceedings_to_eee.resolution.dataset_inventory import (
+    DEFAULT_INVENTORY_MODEL,
+    DEFAULT_MAX_SECTION_CHARACTERS,
+    INVENTORY_REASONING_EFFORT,
+    INVENTORY_SCHEMA_NAME,
+    INVENTORY_SEED,
+    INVENTORY_TEMPERATURE,
+    inventory_prompt_sha256,
+    inventory_response_schema,
+    inventory_schema_sha256,
+    load_inventory,
+    run_inventory,
+    select_papers,
+)
 from proceedings_to_eee.resources import DEFAULT_EEE_SCHEMA_PATH, EEE_SCHEMA_SHA256
 from proceedings_to_eee.reviewed_export.workflow import (
     ReviewedExportError,
@@ -385,6 +399,7 @@ def _run_command(
     max_provider_cost_usd: float,
     provider_call_cost_reservation_usd: float,
     paper_id: str | None,
+    max_blocks_per_page: int | None = None,
 ) -> str:
     """Render a shell-safe, credential-free reproduction/resume command."""
 
@@ -442,6 +457,8 @@ def _run_command(
         parts.extend(["--row-model", row_model])
     if row_estimated_call_cost_usd is not None:
         parts.extend(["--row-estimated-call-cost-usd", str(row_estimated_call_cost_usd)])
+    if max_blocks_per_page is not None:
+        parts.extend(["--max-blocks-per-page", str(max_blocks_per_page)])
     if paper_id is not None:
         parts.extend(["--paper-id", paper_id])
     return shlex.join(parts)
@@ -467,6 +484,7 @@ def _settings(
     provider_max_structured_calls: int = 10_000,
     provider_max_cost_usd: float = 1_000.0,
     provider_cost_reservation_per_call_usd: float = 0.25,
+    max_blocks_per_page: int | None = None,
 ) -> PipelineSettings:
     return PipelineSettings(
         project_root=Path.cwd().resolve(),
@@ -476,6 +494,7 @@ def _settings(
         model=model,
         min_confidence=min_confidence,
         reasoning_effort=reasoning_effort,
+        max_blocks_per_page=max_blocks_per_page,
         row_enumeration_enabled=row_enumeration_enabled,
         row_model=row_model,
         row_estimated_call_cost_usd=row_estimated_call_cost_usd,
@@ -505,9 +524,15 @@ def demo_command(
 def inspect_pdf(
     pdf: Annotated[Path, typer.Argument(exists=True, readable=True)],
     source_id: Annotated[str, typer.Option()] = "inspection",
-    limit: Annotated[int, typer.Option(min=1, max=30)] = 12,
+    limit: Annotated[
+        int | None,
+        typer.Option(
+            min=1,
+            help="Cap on automatically ranked result pages; omit to list every page in order.",
+        ),
+    ] = None,
 ) -> None:
-    """Show result-rich pages selected by the deterministic layout stage."""
+    """Show the pages the deterministic layout stage would read."""
 
     layout = extract_pdf_layout(pdf, source_id)
     selected = select_result_pages(layout, limit=limit)
@@ -607,6 +632,13 @@ def run_corpus_command(
             ),
         ),
     ] = 0.25,
+    max_blocks_per_page: Annotated[
+        int | None,
+        typer.Option(
+            min=1,
+            help="Optional cap on result blocks per selected page; unset keeps every block.",
+        ),
+    ] = None,
     paper_id: Annotated[str | None, typer.Option()] = None,
     quiet: Annotated[bool, typer.Option()] = False,
 ) -> None:
@@ -631,6 +663,7 @@ def run_corpus_command(
         max_structured_calls=max_structured_calls,
         max_provider_cost_usd=max_provider_cost_usd,
         provider_call_cost_reservation_usd=provider_call_cost_reservation_usd,
+        max_blocks_per_page=max_blocks_per_page,
         paper_id=paper_id,
     )
     try:
@@ -661,6 +694,7 @@ def run_corpus_command(
         provider_max_structured_calls=max_structured_calls,
         provider_max_cost_usd=max_provider_cost_usd,
         provider_cost_reservation_per_call_usd=provider_call_cost_reservation_usd,
+        max_blocks_per_page=max_blocks_per_page,
     )
     try:
         if settings.tuple_model is not None and not settings.tuple_model.strip():
@@ -903,6 +937,17 @@ def recompose_census_command(
         Path, typer.Option(exists=True, readable=True)
     ] = DEFAULT_EEE_SCHEMA_PATH,
     paper_ids: Annotated[Path | None, typer.Option(exists=True, readable=True)] = None,
+    demote_reviewer_flagged_origin: Annotated[
+        bool,
+        typer.Option(
+            "--demote-reviewer-flagged-origin",
+            help=(
+                "Opt in: read each paper's private review log and withhold a reviewer-"
+                "accepted candidate whose rationale describes another party's result. "
+                "Off by default; the rationale text never reaches a record or summary."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Replay validation and EEE composition over a finished census run. Offline."""
 
@@ -924,6 +969,7 @@ def recompose_census_command(
         schema_path=schema_path,
         pipeline_git_commit=str(_code_state(Path.cwd().resolve()).get("git_commit") or "") or None,
         paper_ids=wanted,
+        demote_reviewer_flagged_origin=demote_reviewer_flagged_origin,
     )
     typer.echo(
         json.dumps(
@@ -931,11 +977,15 @@ def recompose_census_command(
                 key: summary[key]
                 for key in (
                     "origin_policy",
+                    "demote_reviewer_flagged_origin",
                     "papers_read",
                     "candidates",
                     "records",
                     "records_by_tier",
                     "records_by_producer_origin_basis",
+                    "skipped_cue_overrides_review",
+                    "skipped_reviewer_withheld_origin",
+                    "skipped_reviewer_rationale_flagged",
                 )
             },
             indent=2,
@@ -1061,6 +1111,154 @@ def review_candidates_command(
     summary["provider_reported_cost_usd"] = round(spent, 6)
     summary["max_cost_usd"] = max_cost_usd
     write_json(output or (run_root / "review-summary.json"), summary)
+    typer.echo(json.dumps(summary, indent=2))
+
+
+def _paper_ids_from_file(paper_ids: Path | None) -> set[str] | None:
+    """Read a paper-id file: a JSON list, a JSON object with a `slugs` list, or one id
+    per line (blank lines and `#` comments ignored)."""
+
+    if paper_ids is None:
+        return None
+    text = paper_ids.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        payload = payload.get("slugs")
+    if isinstance(payload, list):
+        return {str(slug) for slug in payload}
+    return {
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+
+@app.command("inventory-datasets")
+def inventory_datasets_command(
+    run_root: Annotated[Path, typer.Argument(exists=True, readable=True)],
+    model: Annotated[str, typer.Option(envvar="ERE_INVENTORY_MODEL")] = DEFAULT_INVENTORY_MODEL,
+    max_cost_usd: Annotated[float, typer.Option(min=1e-6)] = 8.0,
+    max_tokens: Annotated[int, typer.Option(min=1)] = 8_000,
+    max_section_characters: Annotated[
+        int,
+        typer.Option(
+            min=1_000,
+            help="Bound on the section text sent per paper; the gate records any cut.",
+        ),
+    ] = DEFAULT_MAX_SECTION_CHARACTERS,
+    provider_call_cost_reservation_usd: Annotated[float, typer.Option(min=1e-6)] = 0.05,
+    max_structured_calls: Annotated[int, typer.Option(min=1)] = 20_000,
+    paper_ids: Annotated[
+        Path | None,
+        typer.Option(
+            exists=True,
+            readable=True,
+            help="Restrict to these paper ids: a JSON list, a JSON object with a "
+            "`slugs` list, or one id per line.",
+        ),
+    ] = None,
+    output: Annotated[Path | None, typer.Option()] = None,
+    dry_run: Annotated[
+        bool, typer.Option(help="Print the selection size and spend nothing.")
+    ] = False,
+) -> None:
+    """Inventory the datasets each paper evaluates on, one bounded call per paper.
+
+    Post-hoc over a finished run. Entries are model proposals whose quotes are re-found
+    on the frozen layout; the inventory never rewrites a candidate, and binding candidates
+    to it happens offline in recompose-census.
+    """
+
+    wanted = _paper_ids_from_file(paper_ids)
+    papers = select_papers(run_root, paper_ids=wanted)
+    if dry_run:
+        already = sum(load_inventory(paper_dir) is not None for paper_dir in papers)
+        typer.echo(
+            json.dumps(
+                {
+                    "selected": len(papers),
+                    "already_inventoried": already,
+                    "provider_calls": 0,
+                },
+                indent=2,
+            )
+        )
+        return
+
+    limits = ProviderBudgetLimits(
+        max_structured_calls=max_structured_calls,
+        max_cost_usd=max_cost_usd,
+        cost_reservation_per_call_usd=provider_call_cost_reservation_usd,
+    )
+    contract = provider_budget_contract(
+        corpus_binding={"run_root": run_root.name, "stage": "dataset_inventory"},
+        provider_run_contract={
+            "inventory": {
+                "provider": "openrouter",
+                "model": model,
+                "max_tokens": max_tokens,
+                "schema_name": INVENTORY_SCHEMA_NAME,
+                "schema_sha256": inventory_schema_sha256(),
+                "prompt_sha256": inventory_prompt_sha256(),
+                "temperature": INVENTORY_TEMPERATURE,
+                "reasoning_effort": INVENTORY_REASONING_EFFORT,
+                "seed": INVENTORY_SEED,
+                "max_section_characters": max_section_characters,
+            }
+        },
+        limits=limits,
+    )
+    client = BudgetedProviderClient(
+        client=OpenRouterClient(api_key=runtime_key()),
+        ledger_path=run_root / "private" / "dataset-inventory-budget-ledger.jsonl",
+        contract=contract,
+        limits=limits,
+    )
+    spent = 0.0
+
+    def call(system: str, user: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        nonlocal spent
+        response = client.structured_chat(
+            model=model,
+            system=system,
+            user=user,
+            schema_name=INVENTORY_SCHEMA_NAME,
+            schema=inventory_response_schema(),
+            max_tokens=max_tokens,
+            temperature=INVENTORY_TEMPERATURE,
+            reasoning_effort=INVENTORY_REASONING_EFFORT,
+            seed=INVENTORY_SEED,
+        )
+        provider_call = response.call
+        spent += provider_call.cost_usd or 0.0
+        telemetry = {
+            "request_sha256": provider_call.prompt_sha256,
+            "response_sha256": provider_call.response_sha256,
+            "input_tokens": provider_call.input_tokens,
+            "output_tokens": provider_call.output_tokens,
+            "cost_usd": provider_call.cost_usd,
+            "latency_seconds": provider_call.latency_seconds,
+            "attempts": provider_call.attempts,
+        }
+        return response.payload, telemetry
+
+    def stop() -> bool:
+        return spent >= max_cost_usd - provider_call_cost_reservation_usd
+
+    summary = run_inventory(
+        run_root=run_root,
+        model=model,
+        call=call,
+        papers=papers,
+        max_section_characters=max_section_characters,
+        stop=stop,
+    )
+    summary["provider_reported_cost_usd"] = round(spent, 6)
+    summary["max_cost_usd"] = max_cost_usd
+    write_json(output or (run_root / "dataset-inventory-summary.json"), summary)
     typer.echo(json.dumps(summary, indent=2))
 
 
@@ -1235,8 +1433,24 @@ def run_census_command(
         float, typer.Option(min=1e-6, help="Hard ceiling on provider-reported cost.")
     ] = 25.0,
     per_paper_max_cost_usd: Annotated[float, typer.Option(min=1e-6)] = 1.5,
-    per_paper_max_calls: Annotated[int, typer.Option(min=1)] = 400,
+    per_paper_max_calls: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            help=(
+                "Structured-call ceiling per paper. Every page and block is read by default, "
+                "so a long paper needs far more calls than the earlier capped runs."
+            ),
+        ),
+    ] = 2000,
     provider_call_cost_reservation_usd: Annotated[float, typer.Option(min=1e-6)] = 0.05,
+    max_blocks_per_page: Annotated[
+        int | None,
+        typer.Option(
+            min=1,
+            help="Optional cap on result blocks per selected page; unset keeps every block.",
+        ),
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option(help="Walk the order and write a ledger without any provider call."),
@@ -1255,6 +1469,7 @@ def run_census_command(
         provider_max_structured_calls=per_paper_max_calls,
         provider_max_cost_usd=per_paper_max_cost_usd,
         provider_cost_reservation_per_call_usd=provider_call_cost_reservation_usd,
+        max_blocks_per_page=max_blocks_per_page,
     )
     try:
         limits = CensusLimits(
@@ -1416,6 +1631,13 @@ def preflight_corpus_command(
             help="Optional user-supplied origin-call estimate; not a quote.",
         ),
     ] = None,
+    max_blocks_per_page: Annotated[
+        int | None,
+        typer.Option(
+            min=1,
+            help="Optional cap on result blocks per selected page; unset keeps every block.",
+        ),
+    ] = None,
     paper_id: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Freeze and plan a new corpus without a provider client or API key."""
@@ -1429,6 +1651,7 @@ def preflight_corpus_command(
         output=output,
         model="not-used-by-preflight",
         row_enumeration_enabled=row_enumeration,
+        max_blocks_per_page=max_blocks_per_page,
     )
     report = _preflight_call(
         preflight_corpus,
@@ -1455,10 +1678,13 @@ def preflight_corpus_command(
         if paper["status"] == "success":
             summary.update(
                 {
+                    "page_count": paper["page_count"],
                     "selected_pages": [
                         item["page"] for item in paper["selection"]["selected_pages"]
                     ],
                     "result_blocks": len(paper["selected_blocks"]),
+                    "blocks_dropped_in_references": paper["blocks_dropped_in_references"],
+                    "tables_chunked": paper["tables_chunked"],
                     "rows_planned": paper["row_plan"]["telemetry"]["rows_planned"],
                     "maximum_extraction_calls_before_verifier_or_origin": paper[
                         "structured_call_bound"
@@ -1497,7 +1723,16 @@ def validate_eee(
     schema_path: Annotated[
         Path, typer.Option(exists=True, readable=True)
     ] = DEFAULT_EEE_SCHEMA_PATH,
-    schema_sha256: Annotated[str | None, typer.Option()] = DEFAULT_SCHEMA_SHA256,
+    schema_sha256: Annotated[
+        str | None,
+        typer.Option(
+            help=(
+                "Expected schema hash. By default the schema is checked against the "
+                "vendored pin for its own version, so an older vendored schema can be "
+                "selected with --schema-path alone."
+            )
+        ),
+    ] = None,
 ) -> None:
     """Validate one EEE record and enforce schema-version equality."""
 
@@ -2148,6 +2383,13 @@ def plan_row_enumeration_command(
     ],
     model: Annotated[str, typer.Option(envvar="ERE_EXTRACTOR_MODEL")],
     output: Annotated[Path | None, typer.Option()] = None,
+    max_blocks_per_page: Annotated[
+        int | None,
+        typer.Option(
+            min=1,
+            help="Optional cap on result blocks per selected page; unset keeps every block.",
+        ),
+    ] = None,
 ) -> None:
     """Reconstruct exact next-run block reuse and bounded row calls. Offline."""
 
@@ -2158,6 +2400,7 @@ def plan_row_enumeration_command(
         corpus=load_corpus(resolved_corpus_path),
         project_root=project_root,
         extractor_model=model,
+        max_blocks_per_page=max_blocks_per_page,
         output_path=None,
     )
     report["corpus_file_sha256"] = sha256_file(resolved_corpus_path)

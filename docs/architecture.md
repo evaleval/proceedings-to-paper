@@ -6,7 +6,7 @@ This section describes the available architecture, including optional model stag
 The stored census run used block extraction, optional rows, and a separate page-scoped
 review. It did not validate the complete tuple/verifier/origin chain. See
 [the project guide](project-guide.md) for the routes and
-[the evaluation status](evaluation-status.md) for measured outcomes.
+[the results page](results.md) for measured outcomes.
 
 1. **Freeze sources.** Download and hash exact paper or supplement bytes. A primary
    paper uses exactly one `pdf_url` or `pdf_path`; local paths resolve against the
@@ -15,7 +15,28 @@ review. It did not validate the complete tuple/verifier/origin chain. See
    media type, source role, access state, and license disposition. A repository source
    retains its URL and a declared full commit only after `git ls-remote` advertises that
    commit. The workflow does not clone or hash the repository tree.
-2. **Parse and segment structure.** The MVP uses Poppler layout text split by page, then generic result signals to create bounded, hash-addressed blocks. Blocks retain page/line identity, horizontal table spacing, overlap, source-column bounds for separable side-by-side panels, and separate leading/header and trailing/caption context. A future Docling adapter can add cell bounding boxes behind the same fragment interface.
+2. **Parse and segment structure.** The MVP uses Poppler layout text split by page, then generic result signals to create bounded, hash-addressed blocks. Blocks retain page/line identity, horizontal table spacing, overlap, source-column bounds for separable side-by-side panels, and separate leading/header and trailing/caption context. The deterministic region index attaches captions with one rule: a table takes the nearest unclaimed caption above or below it within `caption_distance_lines` (default 12) page lines, nearest pair first, each caption and table claimed once, never across a numbered or all-caps heading or another table. A caption changes column panel only when its text runs through the gutter or one side spans the page, and a figure caption attaches only from below. The block segmenter applies the same claim rule to add a caption that lies beyond the leading or trailing context window to the block's context, bounded by the caption distance on top of the window; it does not remove the caption from any window it already fell into, so a caption printed between two tables can appear in both blocks' contexts and a distant trailing caption still forms its own caption-only block. These caption and heading semantics changed under the unchanged `page-region-index/0.1` and `result-block/0.3` schema strings, whose field shapes did not change. A lone all-caps token such as `F1` or `ACM` is not a heading; an all-caps line needs two words and eight characters, while a single capitalized word such as `References` or `Abstract` still is. Bibliography headings are recognised in their English, French, Italian and German forms. A future Docling adapter can add cell bounding boxes behind the same fragment interface.
+   Every page is read unless a corpus entry sets `max_result_pages` or `include_pages`,
+   and every block on a selected page is kept unless `--max-blocks-per-page` caps it.
+   Blocks whose lines lie inside the bibliography, as tracked by the region index across
+   page breaks or by a page-local `References` heading, never reach a model; a block is
+   dropped only when its own lines read like bibliography entries and none reports a
+   value, so appendix results after the references and a result column beside a
+   bibliography column survive. A table
+   longer than `max_data_rows` (14), or whose rows would carry more than
+   `max_numeric_cells` (24) numeric tokens into one call, is split into chunks that each
+   repeat the caption and header context and record `chunk_index`, `chunk_count`, and
+   `header_repeated`. The cell bound is what keeps the expected output per call small: on
+   a wide table the extractor model returns one candidate and stops once a block holds
+   roughly fifty numeric cells, so chunks are sized by cells, not rows. The same model
+   occasionally returns almost nothing for a dense block of ordinary size, so a block
+   with at least three data rows and nine decimal cells that yields at most one
+   candidate is called once more and the attempt with more candidates is kept; both
+   calls are recorded, the checkpoint names the kept one, and `run.json` counts
+   `sparse_retries` and `sparse_retries_kept`.
+   `run.json` and `preflight.json` record `page_count`, `pages_selected`,
+   `blocks_dropped_in_references`, `tables_chunked`, and the number of extractor calls
+   the provider cut off at `max_tokens`, so nothing is cut silently.
 3. **Extract block candidates (`block_candidate_extraction`).** A source-scoped LLM
    call sees one bounded result block and emits a strict candidate proposal. It does
    not decide support, tuple correctness, producer origin, or export eligibility.
@@ -26,7 +47,20 @@ review. It did not validate the complete tuple/verifier/origin chain. See
    unresolved-only split level is allowed. This stage may add proposals but has no
    export authority.
 5. **Apply deterministic support and physical-cell checks.** Evidence and raw values
-   must occur on the declared frozen page. System role, dataset/scope, metric
+   must occur on the declared frozen page. A single-line quote must occur verbatim
+   inside one layout line. A quote that itself spans lines is supported only when
+   every newline-separated segment equals one whole page line, in order and on
+   consecutive lines, after layout-whitespace normalization; fragments of
+   neighbouring lines cannot be stitched together. The candidate records
+   `support_match_mode` (`single_line` or `consecutive_lines`), and only
+   single-line support can pass the deterministic export gate; consecutive-line
+   support routes the candidate to review. `support_match_mode` is review state
+   outside the candidate's stable id and never reaches records, but it is part of
+   the full candidate dump that the tuple candidate binding and the verifier
+   candidate hash cover, and the extractor checkpoint contract embeds
+   `caption_distance_lines`, so gates and checkpoints written before these fields
+   existed do not resume against the current code; every checkpoint contract also
+   binds the code state, which already prevented that. System role, dataset/scope, metric
    direction/scale, value, and physical table coordinates are checked independently.
    Exact cell duplicates may merge; repeated equal values without a unique cell and
    incompatible alternatives remain review items.
@@ -56,12 +90,35 @@ review. It did not validate the complete tuple/verifier/origin chain. See
    the basis and the review tier travel in the record and inside the provenance hash.
    The separate `model_reviewed` census tier can admit candidates despite failed
    referential or field-provenance checks, retaining the earlier failure reason.
-   It is not equivalent to passing the canonical chain. EEE 0.2.2
+   It is not equivalent to passing the canonical chain. Within that tier the cue
+   wins: a reviewer accept earns the `model_reviewed_origin_quote` basis only where
+   the deterministic verdict recorded no attribution cue (a row whose label names the
+   paper itself, such as "Ours", is the one exception: the table cues recorded on it
+   describe the table and do not hold the row back), a reviewer that withheld
+   origin grants nothing, and composition fails closed, naming the candidate, when an
+   authorization disagrees with the verdict. EEE 0.3.0, the pinned default
+   authority (0.2.2 stays vendored and selectable for older artifacts),
    cannot type the complete evidence and role model, so full
    quotes and typed role detail remain in the sidecar. Each
    numeric EEE result nevertheless retains a quote-free flattened anchor in
    `score_details.details`: paper/source ID and hash, page, structure kind,
-   optional label/row/column, and quote hash.
+   optional label/row/column, quote hash, and the ids of the attribution cues that
+   fired (`attribution_cues`), never their matched text. The same map states how
+   the metric identity was established (`metric_identity_source`: local registry,
+   concordant short alias, vendored EEE registry snapshot, extractor only) and how
+   its bounds were (`metric_bounds`: registry, inferred percent, or unresolved, in
+   which case the record carries explicit null bounds rather than an invented
+   scale). The snapshot vendors reviewed registry entries and confirmed aliases
+   only, and leaves out placeholder entities such as `score` or `rank` whose name
+   says what form a number has rather than what it measures. A signed difference
+   or a value outside its metric's declared bounds never exports as a score.
+   Because a model-proposed scale is withheld under every schema authority,
+   recomposing the saved census under 0.2.2 no longer reproduces the historical
+   317-record projection: candidates whose only bounds were model-proposed are
+   skipped there, while 0.3.0 composes them with null bounds. Reporting paths that
+   re-validate a finished run (the public development summary and
+   completed-corpus validation) accept either vendored version and use the schema
+   the run recorded.
 10. **Validate, review, and publish.** JSON Schema validation includes an equality
    check between record `schema_version` and schema metadata. Extraction Review Cards
    expose candidates and
@@ -74,9 +131,9 @@ review. It did not validate the complete tuple/verifier/origin chain. See
    artifacts can be considered for publication. The cards are
    **Extraction Review Cards, not Evaluation Cards**.
 
-## Five model boundaries and safe order
+## Model boundaries and safe order
 
-The five independently selectable model stages are
+The five independently selectable candidate-chain model stages are
 `block_candidate_extraction`, `row_disposition`, `tuple_resolution`,
 `independent_verification`, and `origin_retrieval`. Block and row proposals converge
 at deterministic validation and deduplication. The candidate-level safety chain is
@@ -90,6 +147,66 @@ Configuration fails before source or provider work if a verifier is enabled with
 a tuple model, or origin retrieval is enabled without a verifier. Passing one boundary
 does not grant authority held by a later one, and none of the three downstream model
 stages may mutate candidate tuple fields or automatically promote a candidate.
+
+### Dataset inventory, the sixth boundary
+
+`dataset_inventory` is annotation-only and runs beside the chain, post-hoc over a
+finished run (`ere inventory-datasets`). Per paper it sends the manifest title, every
+caption from the region index on every page, and the layout text of the sections
+whose heading matches
+`data|dataset|corpus|task|benchmark|experimental setup|experiments|evaluation`,
+bounded by `--max-section-characters` (the bound cuts section text only; captions
+and the searchable text of later pages are unaffected), and receives a strict list
+of entries (`name_raw`, `aliases_in_paper`, `kind`, `languages`, `splits`,
+`introduced_here`, `evidence` as page plus verbatim quote). Every quote is re-found,
+whitespace-normalised only (a line-end hyphen is not relaxed; the gate names the
+normalisation), on the cited page of the frozen layout or in one of that page's
+regions; an entry without a verified anchor is dropped and counted. The entry's
+printed name must occur in the layout, whitespace-collapsed and ignoring case, or the
+entry is dropped and counted as unnamed; an alias the layout does not print is
+removed and counted; a kind outside the vocabulary is malformed. The gate
+`<paper>/dataset-inventory.json` is quote-free (entry ids hash name and kind; anchors
+are page, quote hash and verified flag; the prompt, schema and model identifiers, the
+input hashes, the cost and the dropped counts are recorded) and
+`<paper>/private/dataset-inventory.jsonl` keeps the proposal with its quotes. A gate
+with the current prompt and schema hashes is not redone, and the call is charged to
+`<run_root>/private/dataset-inventory-budget-ledger.jsonl`.
+
+Binding is deterministic and lives in `ere recompose-census`, after validation stamps
+observation ids and before attribution, only for papers that have an inventory. The
+rules apply in order and record their id: `exact` (normalised raw string equals an
+entry's name or alias), `caption` (the anchored table's caption or header row names
+exactly one entry, and the raw string names nothing beyond it: a split phrase, a
+generic word, a table reference, a language, or words that all occur in the entry's
+name or aliases), `unique` (a single dataset or subtask entry and a raw string that
+is a split word, a language, a generic word or a `Table N` reference), else `none`;
+ambiguity at any rule is `none`, and so is a caption match that would narrow a raw
+string naming more than the entry (`none_caption_overrides_named_raw`). The anchored
+table is read from the index that located the quote: a full-width table on a
+two-column page is located through the single-panel fallback, whose region ids
+collide with the panelled index's, so the location says which index produced it
+rather than the id being trusted alone. A split is derived only when the candidate states
+none, from the anchor's column header first and the attached caption second. The
+result is the `dataset_binding` sidecar on the replayed candidate, outside
+`stable_id()`, outside `field_value_sha256s()` and outside the review gate payload
+hash, so an unchanged candidate keeps its observation id and every gate that names
+it; `scope.dataset_raw` is never rewritten and the run's `observations.jsonl` is
+never touched. The export composition provenance binds the full candidate dump,
+sidecar included, so a bound record's `export_candidate_sha256` differs from the
+unbound one by design, while an absent sidecar is left out of that hash so a
+candidate that was never bound keeps the export hash it had before the sidecar
+existed.
+
+Composition uses the bound name for `source_data.dataset_name` and `evaluation_name`
+when the class is `exact`, `caption` or `unique`, and always keeps `dataset_raw`,
+`dataset_binding_class` and `dataset_binding_rule` in `source_data.additional_details`,
+with a derived `split` and `split_source` only when the split detail was empty and the
+entry's `language` only when the candidate had none.
+`source_metadata.additional_details.dataset_inventory_sha256` names the inventory the
+record was composed with, as a hash of the gate's content without its telemetry, so
+reruns that verify the same entries name the same inventory. The public snapshot
+allowlists accept each of these keys and reject a binding class or split source
+outside the composer's vocabulary.
 
 Provider/request/response failures are typed terminal attempts, checkpointed
 immediately, and make the technical run incomplete. Semantic reject/review decisions
