@@ -25,11 +25,17 @@ report a baseline score that originally came from another publication. Human rev
 provides a separate way to assess candidates and record decisions against the frozen
 source material, keeping those decisions distinct from model judgments.
 
-The figure illustrates the stricter workflow, while the census tools also support
-export through a separate review of individual evidence pages. The default
-`positive_only` policy requires positive evidence that the paper produced the result,
-whereas `tiered` permits weaker evidence bases with their review status and unresolved
-checks recorded in the output.
+The figure illustrates the stricter workflow. For a run over a whole paper collection
+the pipeline also supports export through a separate review of individual evidence
+pages. The default `positive_only` policy requires positive evidence that the paper
+produced the result, whereas `tiered` permits weaker evidence bases with their review
+status and unresolved checks recorded in the output.
+
+The pipeline has been run on real papers twice: over 105 papers of a toxicity paper
+collection in September 2026, and with the current code over ten of those papers in
+October 2026. The [results page](docs/results.md) describes both runs and what changed
+between them, and the [results folder](results/README.md) holds the per-value tables,
+the EEE records and the comparison.
 
 The [project guide](docs/project-guide.md) is the best starting point for understanding
 these concepts and how the different workflows fit together. The

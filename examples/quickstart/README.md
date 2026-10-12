@@ -19,13 +19,18 @@ an offline fixture and is not an extraction-quality result.
 
 ## Validate the packaged EEE schema
 
-`synthetic-eee.json` is a hand-written EEE 0.2.2 record. It checks the
+`synthetic-eee.json` is a hand-written EEE 0.3.0 record. It checks the
 installed schema validator and was not extracted from a paper.
 
 ```bash
 uv run ere validate-eee examples/quickstart/synthetic-eee.json
 ```
 
-The expected result is schema `0.2.2` with an empty `issues` list. After
+The expected result is schema `0.3.0` with an empty `issues` list. After
 installing the wheel, the same command works from any directory when the record path
-is absolute.
+is absolute. Records composed under the earlier pinned schema still validate against
+it by selecting it explicitly:
+
+```bash
+uv run ere validate-eee <record.json> --schema-path schemas/eee-0.3.0/eval.schema.json
+```
