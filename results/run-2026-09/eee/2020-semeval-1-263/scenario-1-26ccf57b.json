@@ -1,0 +1,131 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2020-semeval-1-263/scenario-1-26ccf57b",
+  "evaluation_results": [
+    {
+      "evaluation_name": "OffensEval 2020 / SemEval-2020 Task 12 sub-task A / F1-score",
+      "evaluation_result_id": "obs_292bd16caa83af00a5d9",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "f1",
+        "metric_kind": "f1",
+        "metric_name": "F1-score",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "not_a_table_row",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_292bd16caa83af00a5d9",
+          "candidate_occurrence_ids": "candidate_occurrence_babba35e91aa547b32d237ec",
+          "evidence_1_kind": "prose",
+          "evidence_1_page": "6",
+          "evidence_1_quote_sha256": "10552bdc3e9ea41be56ac4499d2f0bcf75a3a1c04199df474d8233c2f9e3c77d",
+          "evidence_1_source_id": "src_fc703128ab130ce4719a",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "123db197e58d8aff7afe689f54888d004d351e23a4873612ddf1a8f266700b13",
+          "evidence_anchor_count": "1",
+          "evidence_page": "6",
+          "export_candidate_sha256": "717ba0f3524fe9fa90f53c5e5661ee4f14f44dbf0d33af55081e4bc5057e1557",
+          "export_composition_sha256": "699266e017f8e5320cf01a0de80667a99bc91ac19cbf5d1f526230439f0cb72d",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "5b0ddf26fc29c4cb8d615285833162dcfe1303a3b8bf7ecec7c0c38552f32f75",
+          "field_metric_reason": "deterministic_reference_resolution=metric_registry",
+          "field_metric_source_1_kind": "evidence_quote",
+          "field_metric_source_1_page": "6",
+          "field_metric_source_1_quote_sha256": "10552bdc3e9ea41be56ac4499d2f0bcf75a3a1c04199df474d8233c2f9e3c77d",
+          "field_metric_source_1_source_id": "src_fc703128ab130ce4719a",
+          "field_metric_source_count": "1",
+          "field_metric_status": "bound",
+          "field_metric_value_sha256": "7a26546e83c9e1811708eae5fb140a2abf46ea8d63983cad697b953082884f8a",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "2b424525e6f832ea7730d4d8ff48b868bfa1920362342cdb048a86f566a25a1a",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "6",
+          "field_system_source_1_quote_sha256": "10552bdc3e9ea41be56ac4499d2f0bcf75a3a1c04199df474d8233c2f9e3c77d",
+          "field_system_source_1_source_id": "src_fc703128ab130ce4719a",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "a040498e730d5528453c35031e32bbc59ef6db60eca53e373e33655e0b2b8d0d",
+          "field_unit_reason": "deterministic_reference_resolution=unit_resolved_as_proportion_from_registry_bounded_metric_and_printed_decimal",
+          "field_unit_source_1_kind": "evidence_quote",
+          "field_unit_source_1_page": "6",
+          "field_unit_source_1_quote_sha256": "10552bdc3e9ea41be56ac4499d2f0bcf75a3a1c04199df474d8233c2f9e3c77d",
+          "field_unit_source_1_source_id": "src_fc703128ab130ce4719a",
+          "field_unit_source_count": "1",
+          "field_unit_status": "bound",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "6",
+          "field_value_source_1_quote_sha256": "10552bdc3e9ea41be56ac4499d2f0bcf75a3a1c04199df474d8233c2f9e3c77d",
+          "field_value_source_1_source_id": "src_fc703128ab130ce4719a",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "5a53c7cafd854e632f319760afe41ac98cfcf592950d58d89454b8143e58f396",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2020-semeval-1-263",
+          "producer_origin_basis": "model_asserted_primary_unchecked",
+          "proposal_ids": "proposal_d63041a476138833c85f6171",
+          "raw_reported_value": "0.84206",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.84206
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "scenario 1 (emoji removal)",
+          "subset": "sub-task A"
+        },
+        "dataset_name": "OffensEval 2020 / SemEval-2020 Task 12 sub-task A",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "Scenario 1",
+    "name": "Scenario 1"
+  },
+  "retrieved_timestamp": "1788471698",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "699266e017f8e5320cf01a0de80667a99bc91ac19cbf5d1f526230439f0cb72d",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2020-semeval-1-263",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_unchecked",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "IR3218-UI at SemEval-2020 Task 12: Emoji Effects on Offensive Language IdentifiCation",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

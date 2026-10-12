@@ -1,0 +1,135 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2023-stil-1-15/albertina-pt-br-60671e42-version-base-cae66217",
+  "evaluation_results": [
+    {
+      "evaluation_name": "QA task / EM",
+      "evaluation_result_id": "obs_10ccf7e02950923d7ace",
+      "metric_config": {
+        "additional_details": {
+          "construct": "Exact Match"
+        },
+        "lower_is_better": false,
+        "max_score": 100.0,
+        "metric_id": "accuracy",
+        "metric_kind": "accuracy",
+        "metric_name": "EM",
+        "metric_parameters": {},
+        "metric_unit": "percent",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "not_a_table_row",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_10ccf7e02950923d7ace",
+          "candidate_occurrence_ids": "candidate_occurrence_075be27686a016c5373c6531",
+          "evidence_1_kind": "prose",
+          "evidence_1_page": "8",
+          "evidence_1_quote_sha256": "ee6701f0ecd7f8634c5a8eacffc79e13069d6509ab6a2377ddd1a57f119b0c86",
+          "evidence_1_source_id": "src_78b609b7ec7dfc30a885",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "52a391e46405b66678209ef5aa97e68b9f2e15ee6ab9c5074c01780282c13191",
+          "evidence_anchor_count": "1",
+          "evidence_page": "8",
+          "export_candidate_sha256": "6c2f30e997550904db1685124af79e9ff6aa859e307dd7912efa02016f197f19",
+          "export_composition_sha256": "7a6d7f1aab353c425b0530272d7a6e3c2a39ffac693aacf7dc8c8242d0a9895d",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "8a404c27b358234fb157e0c48f8d5b74823edfb6fa2156c7f4644fa627ecd855",
+          "field_metric_reason": "field_partially_supported_by_evidence_quotes",
+          "field_metric_source_1_kind": "evidence_quote",
+          "field_metric_source_1_page": "8",
+          "field_metric_source_1_quote_sha256": "ee6701f0ecd7f8634c5a8eacffc79e13069d6509ab6a2377ddd1a57f119b0c86",
+          "field_metric_source_1_source_id": "src_78b609b7ec7dfc30a885",
+          "field_metric_source_count": "1",
+          "field_metric_status": "ambiguous",
+          "field_metric_value_sha256": "6d9e49798bba0b8610b0a147ac52374d750ac46240aadbeb3cb7943641698a1c",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "0087dae304e56453ce41e0d8228b90f904be6efb26761db1c056befeb22eeda7",
+          "field_system_reason": "field_partially_supported_by_evidence_quotes",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "8",
+          "field_system_source_1_quote_sha256": "ee6701f0ecd7f8634c5a8eacffc79e13069d6509ab6a2377ddd1a57f119b0c86",
+          "field_system_source_1_source_id": "src_78b609b7ec7dfc30a885",
+          "field_system_source_count": "1",
+          "field_system_status": "ambiguous",
+          "field_system_value_sha256": "1ad6f629f95dd24b76c7a2e950751a8b427807b29036214ed20d8e974ad2cbd5",
+          "field_unit_source_1_kind": "evidence_quote",
+          "field_unit_source_1_page": "8",
+          "field_unit_source_1_quote_sha256": "ee6701f0ecd7f8634c5a8eacffc79e13069d6509ab6a2377ddd1a57f119b0c86",
+          "field_unit_source_1_source_id": "src_78b609b7ec7dfc30a885",
+          "field_unit_source_count": "1",
+          "field_unit_status": "bound",
+          "field_unit_value_sha256": "e138253894636214935fbd71ca9f852e2f4c35933ce03ad9ac93ba6f9b3ef4a3",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "8",
+          "field_value_source_1_quote_sha256": "ee6701f0ecd7f8634c5a8eacffc79e13069d6509ab6a2377ddd1a57f119b0c86",
+          "field_value_source_1_source_id": "src_78b609b7ec7dfc30a885",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "f0f50d340ec1aa83260fa91ff376eea74db9fcbd5bccb891a8ca7ccc6143b2a5",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2023-stil-1-15",
+          "producer_origin_basis": "model_reviewed_origin_quote",
+          "proposal_ids": "proposal_2db489dab662893601cec9fb",
+          "raw_reported_value": "45.12%",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 45.12
+      },
+      "source_data": {
+        "additional_details": {
+          "language": "pt",
+          "raw_scope": "QA task"
+        },
+        "dataset_name": "QA task",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name",
+      "reported_version": "base"
+    },
+    "id": "Albertina PT-BR",
+    "name": "Albertina PT-BR"
+  },
+  "retrieved_timestamp": "1788471620",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "7a6d7f1aab353c425b0530272d7a6e3c2a39ffac693aacf7dc8c8242d0a9895d",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2023-stil-1-15",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_reviewed_origin_quote",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Albertina in Action: An Investigation of its Abilities in Aspect Extraction, Hate Speech Detection, Irony Detection, and Question-Answering",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

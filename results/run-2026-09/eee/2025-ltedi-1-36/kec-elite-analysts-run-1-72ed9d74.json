@@ -1,0 +1,130 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2025-ltedi-1-36/kec-elite-analysts-run-1-72ed9d74",
+  "evaluation_results": [
+    {
+      "evaluation_name": "English / macro F1",
+      "evaluation_result_id": "obs_e7a42fa7c440d0c8fd8b",
+      "metric_config": {
+        "additional_details": {
+          "construct": "macro F1 score"
+        },
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "macro_f1",
+        "metric_kind": "f1",
+        "metric_name": "macro F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_e7a42fa7c440d0c8fd8b",
+          "candidate_occurrence_ids": "candidate_occurrence_0f918b5955d8e34f02cd7e41",
+          "evidence_1_column": "English",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 3",
+          "evidence_1_page": "5",
+          "evidence_1_quote_sha256": "5f01851e2825fa8480563931890d198370c28806ada3b7c86a99090761eee44e",
+          "evidence_1_row": "KEC-Elite-Analysts (Run 1)",
+          "evidence_1_source_id": "src_62aa19e39dd0192878ae",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "fe5ac0eff2e6b2e3f63a1116b16bfe6090d3f84b1854d0383d93ca0b0b8907d2",
+          "evidence_anchor_count": "1",
+          "evidence_page": "5",
+          "export_candidate_sha256": "2d1c0326225391dafbf02afa568207e5485213c83a8b0edaffc0f1c8a3a62b20",
+          "export_composition_sha256": "c9f387db52fcceec4ca122a4866944fb01ddce29b45d7a72b2b125942b28a5b0",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "67de2b370e8d8ff15e121f3d38da402c7c8f3fdf502180b0f74c6aafa45a1079",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "df2c3b72562878cb904136c1438553d77b4bafc1d10ff4a9be1623daa05618f7",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "c3b018f82ddc36c94442584f2ee826ffbde3c7308de053c9d23d2d8b188ae2ce",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "5",
+          "field_system_source_1_quote_sha256": "5f01851e2825fa8480563931890d198370c28806ada3b7c86a99090761eee44e",
+          "field_system_source_1_source_id": "src_62aa19e39dd0192878ae",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "36ab141f464da17ec8b4bba36e7ab78a9264b62c716d1c74cd706e37dffb7ea4",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "5",
+          "field_value_source_1_quote_sha256": "5f01851e2825fa8480563931890d198370c28806ada3b7c86a99090761eee44e",
+          "field_value_source_1_source_id": "src_62aa19e39dd0192878ae",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "51aaf78f4b0d4bcf5daf1623767eaabf743fb0759db58aca56f9e9de1c4d54fe",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2025-ltedi-1-36",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_8bd45949ec1d485c2857f154",
+          "raw_reported_value": "0.40",
+          "referential_status": "wrong_scope",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.4
+      },
+      "source_data": {
+        "additional_details": {
+          "language": "English",
+          "raw_scope": "English",
+          "subset": "English"
+        },
+        "dataset_name": "English",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "KEC-Elite-Analysts (Run 1)",
+    "name": "KEC-Elite-Analysts (Run 1)"
+  },
+  "retrieved_timestamp": "1788471657",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "c9f387db52fcceec4ca122a4866944fb01ddce29b45d7a72b2b125942b28a5b0",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2025-ltedi-1-36",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Overview of Homophobia and Transphobia Span Detection in Social Media Comments",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

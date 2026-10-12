@@ -1,0 +1,137 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2026-evalita-1-24/monolingual-proposed-architecture-140c753e",
+  "evaluation_results": [
+    {
+      "evaluation_name": "subtask B1 / macro F1-score",
+      "evaluation_result_id": "obs_1e3a4eb9bf897288d6d5",
+      "metric_config": {
+        "additional_details": {
+          "construct": "macro F1-score"
+        },
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "macro_f1",
+        "metric_kind": "f1",
+        "metric_name": "macro F1-score",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "not_a_table_row",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_1e3a4eb9bf897288d6d5",
+          "candidate_occurrence_ids": "candidate_occurrence_68122e614ef5c4f1da62ac03",
+          "evidence_1_kind": "prose",
+          "evidence_1_page": "7",
+          "evidence_1_quote_sha256": "f0c7405e8c96aea2145f3ee8a7ac0bfd6278933a1ba1d9d0f0bd45b7d90dc210",
+          "evidence_1_source_id": "src_1bc72e6ec0c5ab737a67",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "46708b2705ca3e69efcde7a8c63bd4b7907d38e39b122ace46e8429f0f062312",
+          "evidence_anchor_count": "1",
+          "evidence_page": "7",
+          "export_candidate_sha256": "c85b31b962a348542d9e7968815e68c82088b289ce27b68b92336282a96e537a",
+          "export_composition_sha256": "54cbe56ba8aa35cadeec3dbac52d0b6096302823a9461c6071bf0617445af960",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "7",
+          "field_dataset_scope_source_1_quote_sha256": "f0c7405e8c96aea2145f3ee8a7ac0bfd6278933a1ba1d9d0f0bd45b7d90dc210",
+          "field_dataset_scope_source_1_source_id": "src_1bc72e6ec0c5ab737a67",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "9ceb150a0886d8238ee48acf4ebaccb3bca138529b3c217d692cf55a152e2cad",
+          "field_metric_reason": "deterministic_reference_resolution=metric_registry",
+          "field_metric_source_1_kind": "evidence_quote",
+          "field_metric_source_1_page": "7",
+          "field_metric_source_1_quote_sha256": "f0c7405e8c96aea2145f3ee8a7ac0bfd6278933a1ba1d9d0f0bd45b7d90dc210",
+          "field_metric_source_1_source_id": "src_1bc72e6ec0c5ab737a67",
+          "field_metric_source_count": "1",
+          "field_metric_status": "bound",
+          "field_metric_value_sha256": "1d348ed24026560adc927cfe34481ce1f87386df829e4430584f348465355aae",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "78be1c54ea1f4a63a477b2a1dedec5c7b3d8f2c224266dfe7fe0e5e9720a68db",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "7",
+          "field_system_source_1_quote_sha256": "f0c7405e8c96aea2145f3ee8a7ac0bfd6278933a1ba1d9d0f0bd45b7d90dc210",
+          "field_system_source_1_source_id": "src_1bc72e6ec0c5ab737a67",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "88872875af6bb2d9cb95a0fdb67aec5438d1b4f05cd6ca674d4ad5109377922f",
+          "field_unit_reason": "deterministic_reference_resolution=unit_resolved_as_proportion_from_registry_bounded_metric_and_printed_decimal",
+          "field_unit_source_1_kind": "evidence_quote",
+          "field_unit_source_1_page": "7",
+          "field_unit_source_1_quote_sha256": "f0c7405e8c96aea2145f3ee8a7ac0bfd6278933a1ba1d9d0f0bd45b7d90dc210",
+          "field_unit_source_1_source_id": "src_1bc72e6ec0c5ab737a67",
+          "field_unit_source_count": "1",
+          "field_unit_status": "bound",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "7",
+          "field_value_source_1_quote_sha256": "f0c7405e8c96aea2145f3ee8a7ac0bfd6278933a1ba1d9d0f0bd45b7d90dc210",
+          "field_value_source_1_source_id": "src_1bc72e6ec0c5ab737a67",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "96b98883ba7d16ca95ee1fdb5a98a33aff7b314b47d4e62cb33e1a25caf2c078",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2026-evalita-1-24",
+          "producer_origin_basis": "model_reviewed_origin_quote",
+          "proposal_ids": "proposal_c21f59048766d3267af8cc5f",
+          "raw_reported_value": "0.8979",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.8979
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "subtask B1",
+          "subset": "B1"
+        },
+        "dataset_name": "subtask B1",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "monolingual proposed architecture",
+    "name": "monolingual proposed architecture"
+  },
+  "retrieved_timestamp": "1788471682",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "54cbe56ba8aa35cadeec3dbac52d0b6096302823a9461c6071bf0617445af960",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2026-evalita-1-24",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_reviewed_origin_quote",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "GRUPPETTOZZO at MultiPRIDE: Detecting LGBTQ+ Reclamatory Intent via Context-Aware Transformers",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

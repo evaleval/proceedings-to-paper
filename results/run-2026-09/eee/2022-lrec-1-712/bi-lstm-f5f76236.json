@@ -1,0 +1,220 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2022-lrec-1-712/bi-lstm-f5f76236",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Table 5: Eight classes experiment result with classical, en-semble, Deep ML classifier / Accuracy in percentage",
+      "evaluation_result_id": "obs_1c6a61094d1be1a23bda",
+      "metric_config": {
+        "additional_details": {
+          "construct": "hate speech detection"
+        },
+        "lower_is_better": false,
+        "max_score": 100.0,
+        "metric_id": "accuracy",
+        "metric_kind": "accuracy",
+        "metric_name": "Accuracy in percentage",
+        "metric_parameters": {},
+        "metric_unit": "percent",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_1c6a61094d1be1a23bda",
+          "candidate_occurrence_ids": "candidate_occurrence_daf195cfcd647f8a0ce40244",
+          "evidence_1_column": "Embedding Layer",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 5",
+          "evidence_1_page": "6",
+          "evidence_1_quote_sha256": "a7fd661f8a1b683deefd3b0229bdde81a48b35f1ca2a25bcbc556a3050fd322f",
+          "evidence_1_row": "BI-LSTM",
+          "evidence_1_source_id": "src_59547c30e5f0a17d660c",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "ca3eb9dcee8a1b411d026f492b8de4f7332800ddb4f14e1b5233df2a20744fa2",
+          "evidence_anchor_count": "1",
+          "evidence_page": "6",
+          "export_candidate_sha256": "b875e73614d380b992bb8806e0b36e4b2621bbb9926ffe7b12e779f77349f26d",
+          "export_composition_sha256": "8763a4f16f278ed52d50ebb770af7619df1acb6024fe07a3cd853a056f6a2d0d",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "75a5830152cf9824615cb22daedce539e80c7e3b4042749f72d8f59ff0a3988f",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "d6e8c117c76d3248afe1ff3b0d140aebe012abc201865add5c8c333d8ca01c34",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "7000195b92ce67b9aeaa8a24a7cfa9b94b4c6acfbf73cd45b4510450e48c54ca",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "6",
+          "field_system_source_1_quote_sha256": "a7fd661f8a1b683deefd3b0229bdde81a48b35f1ca2a25bcbc556a3050fd322f",
+          "field_system_source_1_source_id": "src_59547c30e5f0a17d660c",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "523d96be332d6cf1c15a32f37dde271e91f4cb92c153ff935f4e6a67bb4d0019",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "e138253894636214935fbd71ca9f852e2f4c35933ce03ad9ac93ba6f9b3ef4a3",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "6",
+          "field_value_source_1_quote_sha256": "a7fd661f8a1b683deefd3b0229bdde81a48b35f1ca2a25bcbc556a3050fd322f",
+          "field_value_source_1_source_id": "src_59547c30e5f0a17d660c",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "abbee46c9cd50da0a6a81d285a4006cff0d2e5288bdfe4974e8bda6e2f95e3e6",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2022-lrec-1-712",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_8d19f7abec27288033459fa4",
+          "raw_reported_value": "0.81",
+          "referential_status": "wrong_scope",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.81
+      },
+      "source_data": {
+        "additional_details": {
+          "language": "Afaan Oromo",
+          "raw_scope": "Feature Extraction Techniques: Embedding Layer"
+        },
+        "dataset_name": "Table 5: Eight classes experiment result with classical, en-semble, Deep ML classifier",
+        "source_type": "other"
+      }
+    },
+    {
+      "evaluation_name": "Table 5: Eight classes experiment result with classical, en-semble, Deep ML classifier / Accuracy in percentage",
+      "evaluation_result_id": "obs_9ff7b026d577ec6b7cd4",
+      "metric_config": {
+        "additional_details": {
+          "construct": "hate speech detection"
+        },
+        "lower_is_better": false,
+        "max_score": 100.0,
+        "metric_id": "accuracy",
+        "metric_kind": "accuracy",
+        "metric_name": "Accuracy in percentage",
+        "metric_parameters": {},
+        "metric_unit": "percent",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_9ff7b026d577ec6b7cd4",
+          "candidate_occurrence_ids": "candidate_occurrence_e560e80b8c23e9e7559ab70d",
+          "evidence_1_column": "Pre-trained Word2vec",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 5",
+          "evidence_1_page": "6",
+          "evidence_1_quote_sha256": "a7fd661f8a1b683deefd3b0229bdde81a48b35f1ca2a25bcbc556a3050fd322f",
+          "evidence_1_row": "BI-LSTM",
+          "evidence_1_source_id": "src_59547c30e5f0a17d660c",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "ca3eb9dcee8a1b411d026f492b8de4f7332800ddb4f14e1b5233df2a20744fa2",
+          "evidence_anchor_count": "1",
+          "evidence_page": "6",
+          "export_candidate_sha256": "66806a02671a3f8239451f779cd8c6bd1f0482dcb289dfa26daab45d9a39e5d7",
+          "export_composition_sha256": "8763a4f16f278ed52d50ebb770af7619df1acb6024fe07a3cd853a056f6a2d0d",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "75a5830152cf9824615cb22daedce539e80c7e3b4042749f72d8f59ff0a3988f",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "d6e8c117c76d3248afe1ff3b0d140aebe012abc201865add5c8c333d8ca01c34",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "f0cedb0b4866784be4831aa4d020f55e8c067019aa626dcc9e121c6f4b79f668",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "6",
+          "field_system_source_1_quote_sha256": "a7fd661f8a1b683deefd3b0229bdde81a48b35f1ca2a25bcbc556a3050fd322f",
+          "field_system_source_1_source_id": "src_59547c30e5f0a17d660c",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "523d96be332d6cf1c15a32f37dde271e91f4cb92c153ff935f4e6a67bb4d0019",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "e138253894636214935fbd71ca9f852e2f4c35933ce03ad9ac93ba6f9b3ef4a3",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "6",
+          "field_value_source_1_quote_sha256": "a7fd661f8a1b683deefd3b0229bdde81a48b35f1ca2a25bcbc556a3050fd322f",
+          "field_value_source_1_source_id": "src_59547c30e5f0a17d660c",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "0cfa90e11a410683b51ca3355f999cf217d38f177acc274bbaa8f0668f82f1fe",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2022-lrec-1-712",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_bf3af8e19ee2f24286210427",
+          "raw_reported_value": "0.84",
+          "referential_status": "wrong_scope",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.84
+      },
+      "source_data": {
+        "additional_details": {
+          "language": "Afaan Oromo",
+          "raw_scope": "Feature Extraction Techniques: Pre-trained Word2vec"
+        },
+        "dataset_name": "Table 5: Eight classes experiment result with classical, en-semble, Deep ML classifier",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "BI-LSTM",
+    "name": "BI-LSTM"
+  },
+  "retrieved_timestamp": "1788471695",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "8763a4f16f278ed52d50ebb770af7619df1acb6024fe07a3cd853a056f6a2d0d",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2022-lrec-1-712",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Afaan Oromo Hate Speech Detection and Classification on Social Media",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

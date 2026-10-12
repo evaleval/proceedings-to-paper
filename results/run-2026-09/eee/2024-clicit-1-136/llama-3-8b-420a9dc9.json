@@ -1,0 +1,126 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2024-clicit-1-136/llama-3-8b-420a9dc9",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Task A / Macro F1",
+      "evaluation_result_id": "obs_a404183841baece18a73",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "macro_f1",
+        "metric_kind": "f1",
+        "metric_name": "Macro F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "row_unresolved",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_a404183841baece18a73",
+          "candidate_occurrence_ids": "candidate_occurrence_db7b10595310872fa786f12b",
+          "evidence_1_column": "Macro F1",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 4",
+          "evidence_1_page": "4",
+          "evidence_1_quote_sha256": "e6cf945b59693e37b80f5633bd07187e09afecd6a001749a18b5cc1bf1665691",
+          "evidence_1_row": "llama-3-8b",
+          "evidence_1_source_id": "src_94fe55442991af99d019",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "23407a2d51e47ec4febd675395bde1cbe483ea36f7845c74033bd239f7337d0c",
+          "evidence_anchor_count": "1",
+          "evidence_page": "4",
+          "export_candidate_sha256": "d4c51bedc6e8ad07ddc37c01fdc1ecef342efe97e2e40999ca881d750a681279",
+          "export_composition_sha256": "e39a06ba3e0e71c93cacbaff6f56b6a1f189d561647b508739cbe2bcbdb80f8e",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "8da9c544a37a821dcdd8715450a69569452c097bfe7d25053a0c1367e23b5693",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "34c0cea3dd48881b477e35d95fe3fcde4b2916ba584b3959a3860dc42810a162",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "3faaf0703a8d97885e38a196a9bc8b177de5ce4c5a11e736939c07cfcb24ee9b",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "4",
+          "field_system_source_1_quote_sha256": "e6cf945b59693e37b80f5633bd07187e09afecd6a001749a18b5cc1bf1665691",
+          "field_system_source_1_source_id": "src_94fe55442991af99d019",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "6c4e066fbe87c5f1c98d8a5da08cee16888ff9a66e790f0c36b987bc3aa36f96",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "4",
+          "field_value_source_1_quote_sha256": "e6cf945b59693e37b80f5633bd07187e09afecd6a001749a18b5cc1bf1665691",
+          "field_value_source_1_source_id": "src_94fe55442991af99d019",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "71ffea7e18d0376c09f46e7957e81b755af6c8878a89afb9572557f599c564e3",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2024-clicit-1-136",
+          "producer_origin_basis": "model_asserted_primary_unchecked",
+          "proposal_ids": "proposal_e97d01f7d7fc4994b61773d7",
+          "raw_reported_value": "0.00",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.0
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "Task A",
+          "split": "Test"
+        },
+        "dataset_name": "Task A",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "llama-3-8b",
+    "name": "llama-3-8b"
+  },
+  "retrieved_timestamp": "1788471647",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "e39a06ba3e0e71c93cacbaff6f56b6a1f189d561647b508739cbe2bcbdb80f8e",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2024-clicit-1-136",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_unchecked",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "PejorativITy - In-Context Pejorative Language Disambiguation: A CALAMITA Challenge",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

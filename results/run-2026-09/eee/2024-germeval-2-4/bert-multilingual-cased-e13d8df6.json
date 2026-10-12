@@ -1,0 +1,124 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2024-germeval-2-4/bert-multilingual-cased-e13d8df6",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Subtask 1 / bin maj f1",
+      "evaluation_result_id": "obs_43b381c96dc63a85d456",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "f1",
+        "metric_kind": "f1",
+        "metric_name": "bin maj f1",
+        "metric_parameters": {},
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_43b381c96dc63a85d456",
+          "candidate_occurrence_ids": "candidate_occurrence_47847f6b74e016349d9e7e32",
+          "evidence_1_column": "bin maj f1",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 1",
+          "evidence_1_page": "5",
+          "evidence_1_quote_sha256": "fb1f5d5575978bacc243ccdbade588b8caaebf8431e02009991e40adab982167",
+          "evidence_1_row": "BERT Multilingual Cased",
+          "evidence_1_source_id": "src_2ef98af22c642a118961",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "37644deac5d136587b989a2cc65eb0d8eddd9c80c8379191681805af46210c69",
+          "evidence_anchor_count": "1",
+          "evidence_page": "5",
+          "export_candidate_sha256": "d492976b37fb345b0509b384a27699115a536005cdb950af4015b7e848b369e4",
+          "export_composition_sha256": "5e156f28bda6198d7e9a1e3150ffb131e056d349773a5c3aa63d17e3c1c673d3",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "2d8d2c9d536dcd74e5849adcd5c248bdc7c4a32050f9386ee25ad873ce95ace9",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "90cfa207a292df7d0dae68a101d9940cfb85554643679f12ec9ceceaaf90977d",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "51811b8fae1b6d34313306a5ef95c8fb542cad651869a5e40e9e3fac75223748",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "5",
+          "field_system_source_1_quote_sha256": "fb1f5d5575978bacc243ccdbade588b8caaebf8431e02009991e40adab982167",
+          "field_system_source_1_source_id": "src_2ef98af22c642a118961",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "b8389fac8908993967d590d2da12a7d90d34389ccf2896958072767b0419b97e",
+          "field_unit_reason": "field_not_present",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "cdbd70eed3a69af52e8116dc5d905384cc7d0372f74c8de928e7fbf3d0df03f2",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "5",
+          "field_value_source_1_quote_sha256": "fb1f5d5575978bacc243ccdbade588b8caaebf8431e02009991e40adab982167",
+          "field_value_source_1_source_id": "src_2ef98af22c642a118961",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "d069556b77f3c73a570b9325eee889b40a9143efac60b360c5073c77cbaebed6",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2024-germeval-2-4",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_621876311330c734e947271b",
+          "raw_reported_value": "0.6579",
+          "referential_status": "unresolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.6579
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "bin maj f1"
+        },
+        "dataset_name": "Subtask 1",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "BERT Multilingual Cased",
+    "name": "BERT Multilingual Cased"
+  },
+  "retrieved_timestamp": "1788471679",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "5e156f28bda6198d7e9a1e3150ffb131e056d349773a5c3aa63d17e3c1c673d3",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2024-germeval-2-4",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Team Quabynar at the GermEval 2024 Shared Task 1 GerMS-Detect (Subtasks 1 and 2) on Sexism Detection",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

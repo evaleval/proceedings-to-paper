@@ -1,0 +1,222 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2023-findings-acl-241/bert-f10cc888",
+  "evaluation_results": [
+    {
+      "evaluation_name": "HASOC / Macro F1",
+      "evaluation_result_id": "obs_e32f1513b1c3e80bdae9",
+      "metric_config": {
+        "additional_details": {
+          "construct": "Offensive language detection",
+          "operationalization": "Macro F1 score"
+        },
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "macro_f1",
+        "metric_kind": "f1",
+        "metric_name": "Macro F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_e32f1513b1c3e80bdae9",
+          "candidate_occurrence_ids": "candidate_occurrence_b62da0888661aa36efba652c",
+          "evidence_1_column": "HASOC",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 3",
+          "evidence_1_page": "7",
+          "evidence_1_quote_sha256": "50dcc6509e390831cf7512ef576d3dee989712731e2d308122a2620ab67a273e",
+          "evidence_1_row": "BERT",
+          "evidence_1_source_id": "src_ca2b41219fcd62bb0f7a",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "d2496ab0a27c1ae91bd94a3979af8988d2b5111edf79fa1689c3695a751446a2",
+          "evidence_anchor_count": "1",
+          "evidence_page": "7",
+          "export_candidate_sha256": "a0a6bb975c0c36e7465d9294531c8a77218d4933a876e329c98716ed4d43d39e",
+          "export_composition_sha256": "e2b405ba6d6b116ad3f4aeeb861039c99850889dca07c9365ae33a43f7f47a4e",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "31496e754ee977190dd4da25bb6d9db2dbf6d720c0c1ecfe8af425c2e3d0e01d",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "34c0cea3dd48881b477e35d95fe3fcde4b2916ba584b3959a3860dc42810a162",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "d05e48e9c8a42ece2eeb3f43ee1c3aa949cc992c6dfc36d7a50c0ba2ebaa42af",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "7",
+          "field_system_source_1_quote_sha256": "50dcc6509e390831cf7512ef576d3dee989712731e2d308122a2620ab67a273e",
+          "field_system_source_1_source_id": "src_ca2b41219fcd62bb0f7a",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "0dbbd4ec43e444c66851b3fb82551003860af31d4f4a0dd883e2704fb240211b",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "7",
+          "field_value_source_1_quote_sha256": "50dcc6509e390831cf7512ef576d3dee989712731e2d308122a2620ab67a273e",
+          "field_value_source_1_source_id": "src_ca2b41219fcd62bb0f7a",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "7539577619bea4b1150d0acf94730a61df3db06c2be3dacfd08e4cd930fa372d",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2023-findings-acl-241",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_c924de4cdcbe9c5a6e944c8a",
+          "raw_reported_value": "0.7585",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.7585
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "HASOC",
+          "split": "test"
+        },
+        "dataset_name": "HASOC",
+        "source_type": "other"
+      }
+    },
+    {
+      "evaluation_name": "OLID / Macro F1",
+      "evaluation_result_id": "obs_39b77be9520f6768b530",
+      "metric_config": {
+        "additional_details": {
+          "construct": "Offensive language detection",
+          "operationalization": "Macro F1 score"
+        },
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "macro_f1",
+        "metric_kind": "f1",
+        "metric_name": "Macro F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_39b77be9520f6768b530",
+          "candidate_occurrence_ids": "candidate_occurrence_eb8029372b6470ddbc502852",
+          "evidence_1_column": "OLID",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 3",
+          "evidence_1_page": "7",
+          "evidence_1_quote_sha256": "50dcc6509e390831cf7512ef576d3dee989712731e2d308122a2620ab67a273e",
+          "evidence_1_row": "BERT",
+          "evidence_1_source_id": "src_ca2b41219fcd62bb0f7a",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "d2496ab0a27c1ae91bd94a3979af8988d2b5111edf79fa1689c3695a751446a2",
+          "evidence_anchor_count": "1",
+          "evidence_page": "7",
+          "export_candidate_sha256": "efe87fed417d9c0b6990032ba4b7dcf0cf8538b36b4cee0130d3edfe1335e916",
+          "export_composition_sha256": "e2b405ba6d6b116ad3f4aeeb861039c99850889dca07c9365ae33a43f7f47a4e",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "9049db92d9f7969c3d447c96237d0668c8d938f2999197a46ac39a45555688cc",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "34c0cea3dd48881b477e35d95fe3fcde4b2916ba584b3959a3860dc42810a162",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "ed88c4cf47801b85c97218b78fa4b3d0dd78aaabda2f5dc2923174822306184a",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "7",
+          "field_system_source_1_quote_sha256": "50dcc6509e390831cf7512ef576d3dee989712731e2d308122a2620ab67a273e",
+          "field_system_source_1_source_id": "src_ca2b41219fcd62bb0f7a",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "0dbbd4ec43e444c66851b3fb82551003860af31d4f4a0dd883e2704fb240211b",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "7",
+          "field_value_source_1_quote_sha256": "50dcc6509e390831cf7512ef576d3dee989712731e2d308122a2620ab67a273e",
+          "field_value_source_1_source_id": "src_ca2b41219fcd62bb0f7a",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "638aa041ba634b62df8919375e94b81d640f33431016e5ee44ece93318c00112",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2023-findings-acl-241",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_06bd77a40066b3d1605a855c",
+          "raw_reported_value": "0.8174",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.8174
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "OLID",
+          "split": "test"
+        },
+        "dataset_name": "OLID",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "BERT",
+    "name": "BERT"
+  },
+  "retrieved_timestamp": "1788471689",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "e2b405ba6d6b116ad3f4aeeb861039c99850889dca07c9365ae33a43f7f47a4e",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2023-findings-acl-241",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Teacher and Student Models of Offensive Language in Social Media",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

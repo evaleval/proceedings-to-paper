@@ -1,0 +1,126 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2023-semeval-1-136/passteam-30903e89",
+  "evaluation_results": [
+    {
+      "evaluation_name": "EDOS Shared Task subtask B / F1",
+      "evaluation_result_id": "obs_e1428c9cff2ce5cbab12",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "f1",
+        "metric_kind": "f1",
+        "metric_name": "F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "row_unresolved",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_e1428c9cff2ce5cbab12",
+          "candidate_occurrence_ids": "candidate_occurrence_abed0443aed1c53de61d00f7",
+          "evidence_1_column": "F1",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 9",
+          "evidence_1_page": "7",
+          "evidence_1_quote_sha256": "64dca107113aa163a086468b084f18e255be8d57f1884c68bed0f6257e9f3dbf",
+          "evidence_1_row": "2",
+          "evidence_1_source_id": "src_b54a93d06334ab97f33f",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "baa0e4506135eb43258d3e93189413e20e7054f57327710027d5f63de4de8a17",
+          "evidence_anchor_count": "1",
+          "evidence_page": "7",
+          "export_candidate_sha256": "79581039478fa085345ad16563984fe071cccea5ecf33625c8fe686a80a9d581",
+          "export_composition_sha256": "7f27ed43910663141fae91eba973beedb4096c69aca0a186157b03e96bdbb8f2",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "02fadbbe7536a56016dee6a0f1bbfc51b199012b0fe732e8fc7fc7f051b58cb1",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "4abe52bc785931863b44bd2f7d7240611ecc1d5b106d1d60782a87a84bb23cbd",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "4ad0073ab15d6cf4e83edf8acff52b732849372f430d751d8b00d4c5f567ff32",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "7",
+          "field_system_source_1_quote_sha256": "64dca107113aa163a086468b084f18e255be8d57f1884c68bed0f6257e9f3dbf",
+          "field_system_source_1_source_id": "src_b54a93d06334ab97f33f",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "0506cc69a06a489d78f542d6cfdcaaeb5823cab983683414266c31213a178d27",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "7",
+          "field_value_source_1_quote_sha256": "64dca107113aa163a086468b084f18e255be8d57f1884c68bed0f6257e9f3dbf",
+          "field_value_source_1_source_id": "src_b54a93d06334ab97f33f",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "5861991a4a68a8ff728bf660f6644d70f673241d38f9087751083c300c211f17",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2023-semeval-1-136",
+          "producer_origin_basis": "model_asserted_primary_unchecked",
+          "proposal_ids": "proposal_2a9fd8740d4668b406d89bfd",
+          "raw_reported_value": "0.7212",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.7212
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "subtask B",
+          "subset": "subtask B"
+        },
+        "dataset_name": "EDOS Shared Task subtask B",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "PASSTeam",
+    "name": "PASSTeam"
+  },
+  "retrieved_timestamp": "1788471620",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "7f27ed43910663141fae91eba973beedb4096c69aca0a186157b03e96bdbb8f2",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2023-semeval-1-136",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_unchecked",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "SINAI at SemEval-2023 Task 10: Leveraging Emotions, Sentiments, and Irony Knowledge for Explainable Detection of Online Sexism",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

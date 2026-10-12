@@ -1,0 +1,127 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2021-findings-emnlp-296/bertweet-659effe2",
+  "evaluation_results": [
+    {
+      "evaluation_name": "PEJOR2 data set / accuracy",
+      "evaluation_result_id": "obs_d77bbda3479e25a7fa87",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 100.0,
+        "metric_id": "accuracy",
+        "metric_kind": "accuracy",
+        "metric_name": "accuracy",
+        "metric_parameters": {},
+        "metric_unit": "percent",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "row_unresolved",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_d77bbda3479e25a7fa87",
+          "candidate_occurrence_ids": "candidate_occurrence_63a76049556ddfb77046f2e1",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "4",
+          "evidence_1_quote_sha256": "c8894aa3b60115d1d1c3e00325e19e77d333efef8f76db4f6cc6300004c58877",
+          "evidence_1_row": "BERTweet      SVM        78.0%   0.760   77.9%   0.793",
+          "evidence_1_source_id": "src_43f220c84998582613d1",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "6cd51459e2b1111e29c892470a6deecb71c335750a669910bdd0838f576cc507",
+          "evidence_anchor_count": "1",
+          "evidence_page": "4",
+          "export_candidate_sha256": "6e82d055d3e42fe99af0eead8c893681d0ae27f606c5db4b3ebb41ff24652b59",
+          "export_composition_sha256": "67e2a5368d7e764abc01dbd8af71eda8220a48ae85f4b8f18f585b2531ce082f",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "8ed8a7ed74cf3cde9bd4824919c752ddccabe28f0a444766a5c6b379caa8c8ee",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "e7fe57482ae5d888f465341c6685496df519eac4a3e02af618da42c91c183fd7",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "6f246d567ef4378c9bc11d178b7345a421ad6b6ed2a742ae8e033fdbe213b00d",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "4",
+          "field_system_source_1_quote_sha256": "c8894aa3b60115d1d1c3e00325e19e77d333efef8f76db4f6cc6300004c58877",
+          "field_system_source_1_source_id": "src_43f220c84998582613d1",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "4d6faf04d41e1b9251a9d06ad639593693f5c8da97b6b33615c41e91ca4023de",
+          "field_unit_reason": "deterministic_reference_resolution=unit_resolved_as_percent_from_printed_percent_sign",
+          "field_unit_source_1_kind": "evidence_quote",
+          "field_unit_source_1_page": "4",
+          "field_unit_source_1_quote_sha256": "c8894aa3b60115d1d1c3e00325e19e77d333efef8f76db4f6cc6300004c58877",
+          "field_unit_source_1_source_id": "src_43f220c84998582613d1",
+          "field_unit_source_count": "1",
+          "field_unit_status": "bound",
+          "field_unit_value_sha256": "e138253894636214935fbd71ca9f852e2f4c35933ce03ad9ac93ba6f9b3ef4a3",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "4",
+          "field_value_source_1_quote_sha256": "c8894aa3b60115d1d1c3e00325e19e77d333efef8f76db4f6cc6300004c58877",
+          "field_value_source_1_source_id": "src_43f220c84998582613d1",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "a498fd46b1793cca574ce9dda44bd5d0a63516ebda8a2cbfa19bbbcd19a9a9c1",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2021-findings-emnlp-296",
+          "producer_origin_basis": "model_asserted_primary_unchecked",
+          "proposal_ids": "proposal_9c71d4ceb8b1676d4186e7ea",
+          "raw_reported_value": "78.0%",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 78.0
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "PEJOR2 data set"
+        },
+        "dataset_name": "PEJOR2 data set",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "BERTweet",
+    "name": "BERTweet"
+  },
+  "retrieved_timestamp": "1788471652",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "67e2a5368d7e764abc01dbd8af71eda8220a48ae85f4b8f18f585b2531ce082f",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2021-findings-emnlp-296",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_unchecked",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "A Computational Exploration of Pejorative Language in Social Media",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

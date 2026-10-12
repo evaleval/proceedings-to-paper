@@ -1,0 +1,139 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2024-emnlp-main-724/gpt-4-29f11dbc",
+  "evaluation_results": [
+    {
+      "evaluation_name": "GovCrit. / Prec.",
+      "evaluation_result_id": "obs_5a5f2e9abd8924bd4eef",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "precision",
+        "metric_kind": "precision",
+        "metric_name": "Prec.",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "not_a_table_row",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_5a5f2e9abd8924bd4eef",
+          "candidate_occurrence_ids": "candidate_occurrence_4749d0ad46b9861354211b12",
+          "evidence_1_column": "GPT-4",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "25",
+          "evidence_1_quote_sha256": "6d8a65a874bf1ee2fd7bf34560c1f28d6febed695f7e39b6612d02889f9decf6",
+          "evidence_1_row": "Issue-specific Metrics Prec.",
+          "evidence_1_source_id": "src_b82fdd16203a72b1bf73",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "3dc9261f16945632944fd4532eb1ab57d2a436866c3b16828c0e2b265358c0ab",
+          "evidence_2_column": "GPT-4",
+          "evidence_2_kind": "table",
+          "evidence_2_page": "25",
+          "evidence_2_quote_sha256": "c84bbb528cb53e7c64acb270910d74fa387f8c314a1400f6b065e283473be742",
+          "evidence_2_row": "Issue-specific Metrics Prec.",
+          "evidence_2_source_id": "src_b82fdd16203a72b1bf73",
+          "evidence_2_source_role": "paper",
+          "evidence_2_source_sha256": "3dc9261f16945632944fd4532eb1ab57d2a436866c3b16828c0e2b265358c0ab",
+          "evidence_anchor_count": "2",
+          "evidence_page": "25",
+          "export_candidate_sha256": "aaab30bd2b132b9a3b98d624530e21d140ed98eb1477976d5e0c16bcf91bd0cc",
+          "export_composition_sha256": "80e5768f1fcfcc3ad1023b897275ed8e73b60e6c2fcf29c8b184a5c0de8d1c0c",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "348092937a3fb9b4e7e9f24ad24b930dedf0db192e08114e4bcc4b282fc5f108",
+          "field_metric_reason": "deterministic_reference_resolution=metric_registry",
+          "field_metric_source_1_kind": "evidence_quote",
+          "field_metric_source_1_page": "25",
+          "field_metric_source_1_quote_sha256": "6d8a65a874bf1ee2fd7bf34560c1f28d6febed695f7e39b6612d02889f9decf6",
+          "field_metric_source_1_source_id": "src_b82fdd16203a72b1bf73",
+          "field_metric_source_count": "1",
+          "field_metric_status": "bound",
+          "field_metric_value_sha256": "1094271a96d4d94f9d36ecb2cdb7b55fc9c1a776a5717b681e5f5b92a6eb3204",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "7bcc0e6916803ee48cd3cdce1564112fa93539c1f3f1367bff434ad9070a348d",
+          "field_system_reason": "field_partially_supported_by_evidence_quotes",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "25",
+          "field_system_source_1_quote_sha256": "c84bbb528cb53e7c64acb270910d74fa387f8c314a1400f6b065e283473be742",
+          "field_system_source_1_source_id": "src_b82fdd16203a72b1bf73",
+          "field_system_source_count": "1",
+          "field_system_status": "ambiguous",
+          "field_system_value_sha256": "383943739e35af492f59a6740b7f5fbd35111b7ac82850e74b2ec52357e1db24",
+          "field_unit_reason": "reference_resolution_changed_unbound_unit",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_reason": "value_numeric_projection_not_supported_by_raw",
+          "field_value_source_count": "0",
+          "field_value_status": "unsupported",
+          "field_value_value_sha256": "5d008df93b25d7e7a712cab18161ee13439a62ee874eaa9b30f7bc21d8084448",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2024-emnlp-main-724",
+          "producer_origin_basis": "model_reviewed_origin_quote",
+          "proposal_ids": "proposal_0f833a36d8ee9486af9b90f4",
+          "raw_reported_value": "0.64 ± 0.16",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.64,
+        "uncertainty": {
+          "standard_deviation": 0.16
+        }
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "GovCrit.",
+          "subset": "GovCrit."
+        },
+        "dataset_name": "GovCrit.",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "developer": "OpenAI",
+    "id": "GPT-4",
+    "name": "GPT-4"
+  },
+  "retrieved_timestamp": "1788471698",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "80e5768f1fcfcc3ad1023b897275ed8e73b60e6c2fcf29c8b184a5c0de8d1c0c",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2024-emnlp-main-724",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_reviewed_origin_quote",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "OATH-Frames: Characterizing Online Attitudes Towards Homelessness with LLM Assistants",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

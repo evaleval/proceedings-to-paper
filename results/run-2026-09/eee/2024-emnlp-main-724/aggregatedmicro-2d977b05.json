@@ -1,0 +1,125 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2024-emnlp-main-724/aggregatedmicro-2d977b05",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Table 2 / F1",
+      "evaluation_result_id": "obs_93fce18d40025852d5eb",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "f1",
+        "metric_kind": "f1",
+        "metric_name": "F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_93fce18d40025852d5eb",
+          "candidate_occurrence_ids": "candidate_occurrence_fb788d28b0a93b4125eb0109",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "2",
+          "evidence_1_page": "6",
+          "evidence_1_quote_sha256": "8463a662012420826efd092f5c1cfb93afbcc53cb7a29aac4e007b320d0198f8",
+          "evidence_1_row": "AggregatedMicro",
+          "evidence_1_source_id": "src_b82fdd16203a72b1bf73",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "3dc9261f16945632944fd4532eb1ab57d2a436866c3b16828c0e2b265358c0ab",
+          "evidence_anchor_count": "1",
+          "evidence_page": "6",
+          "export_candidate_sha256": "87e2fd4f23102f8078975246b28b14cebd36e40fdf9eb25fe1634e9f7c975d02",
+          "export_composition_sha256": "80e5768f1fcfcc3ad1023b897275ed8e73b60e6c2fcf29c8b184a5c0de8d1c0c",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "89dee59f66dc05f0738b9b6d4673982b95ac8eb6e8d94c20d50048dbdeaf353b",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "4abe52bc785931863b44bd2f7d7240611ecc1d5b106d1d60782a87a84bb23cbd",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "3f1eeb464cc58dd2ee2b4485cc9167f7273421c98a572f6431684857d58e365d",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "6",
+          "field_system_source_1_quote_sha256": "8463a662012420826efd092f5c1cfb93afbcc53cb7a29aac4e007b320d0198f8",
+          "field_system_source_1_source_id": "src_b82fdd16203a72b1bf73",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "6dde4e6654b3d063762f0807dd4034c7c67fa769f2a58c0a2bd34c1838d288a2",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_reason": "value_numeric_projection_not_supported_by_raw",
+          "field_value_source_count": "0",
+          "field_value_status": "unsupported",
+          "field_value_value_sha256": "8cdc9de5e68f250f76b1751e759a32df27e7bc41077b7ab30b17c1d22c763fcc",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2024-emnlp-main-724",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_8e3a270bcab84c4562456c4e",
+          "raw_reported_value": "0.62 ± 0.01",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.62,
+        "uncertainty": {
+          "standard_deviation": 0.01
+        }
+      },
+      "source_data": {
+        "additional_details": {
+          "aggregation": "AggregatedMicro",
+          "raw_scope": "AggregatedMicro"
+        },
+        "dataset_name": "Table 2",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "AggregatedMicro",
+    "name": "AggregatedMicro"
+  },
+  "retrieved_timestamp": "1788471698",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "80e5768f1fcfcc3ad1023b897275ed8e73b60e6c2fcf29c8b184a5c0de8d1c0c",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2024-emnlp-main-724",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "OATH-Frames: Characterizing Online Attitudes Towards Homelessness with LLM Assistants",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

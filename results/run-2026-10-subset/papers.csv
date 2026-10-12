@@ -1,0 +1,11 @@
+﻿paper_id,anthology_id,year,venue,title,pdf_url,proposed_values,eee_records,exported_values,note
+2020-semeval-1-295,2020.semeval-1.295,2020,semeval,UoB at SemEval-2020 Task 12: Boosting BERT with Corpus Level Information,https://aclanthology.org/2020.semeval-1.295.pdf,58,6,45,
+2021-konvens-1-4,2021.konvens-1.4,2021,konvens,How Hateful are Movies? A Study and Prediction on Movie Subtitles,https://aclanthology.org/2021.konvens-1.4.pdf,248,6,25,
+2022-findings-acl-308,2022.findings-acl.308,2022,findings,"On the Safety of Conversational Models: Taxonomy, Dataset, and Benchmark",https://aclanthology.org/2022.findings-acl.308.pdf,227,10,73,
+2022-socialnlp-1-4,2022.socialnlp-1.4,2022,socialnlp,Leveraging Dependency Grammar for Fine-Grained Offensive Language Detection using Graph Convolutional Networks,https://aclanthology.org/2022.socialnlp-1.4.pdf,91,14,72,
+2023-findings-acl-241,2023.findings-acl.241,2023,findings,Teacher and Student Models of Offensive Language in Social Media,https://aclanthology.org/2023.findings-acl.241.pdf,53,17,34,
+2024-case-1-19,2024.case-1.19,2024,case,AAST-NLP at Multimodal Hate Speech Event Detection 2024 : A Multimodal Approach for Classification of Text-Embedded Images Based on CLIP and BERT-Based Models.,https://aclanthology.org/2024.case-1.19.pdf,42,7,36,
+2025-chipsal-1-31,2025.chipsal-1.31,2025,chipsal,Dll5143A@NLU of Devanagari Script Languages 2025: Detection of Hate Speech and Targets Using Hierarchical Attention Network,https://aclanthology.org/2025.chipsal-1.31.pdf,266,1,7,
+2025-coling-main-262,2025.coling-main.262,2025,coling,Revisiting Implicitly Abusive Language Detection: Evaluating LLMs in Zero-Shot and Few-Shot Settings,https://aclanthology.org/2025.coling-main.262.pdf,273,6,88,
+2025-emnlp-main-863,2025.emnlp-main.863,2025,emnlp,Are Large Language Models Chronically Online Surfers? A Dataset for Chinese Internet Meme Explanation,https://aclanthology.org/2025.emnlp-main.863.pdf,0,0,0,the extraction stopped at its per-paper ceiling before any value was written
+2025-ltedi-1-13,2025.ltedi-1.13,2025,ltedi,NS@LT-EDI-2025 CasteMigration based hate speech Detection,https://aclanthology.org/2025.ltedi-1.13.pdf,73,6,72,

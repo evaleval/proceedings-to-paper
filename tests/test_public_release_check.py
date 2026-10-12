@@ -15,7 +15,7 @@ IndexedFile = SCANNER["IndexedFile"]
 check_files = SCANNER["check_files"]
 read_index = SCANNER["read_index"]
 main = SCANNER["main"]
-SUMMARY_PATH = "results/census-summary-2026-09-05.json"
+SUMMARY_PATH = "results/run-2026-09/summary.json"
 
 
 def entry(path: str, text: str | bytes = "safe\n", mode: str = "100644"):
@@ -102,6 +102,8 @@ def test_summary_rejects_private_metadata_invalid_types_and_unapproved_text() ->
         ("src/private/annotations.json", "private or generated artifact directory"),
         ("docs/meeting-notes.md", "private working-note filename"),
         ("results/another-summary.json", "result artifact is not explicitly approved"),
+        ("results/run-2026-09/notes.txt", "result artifact is not explicitly approved"),
+        ("results/run-2026-09/private/trace.jsonl", "result artifact is not explicitly approved"),
         ("assets/diagram.PDF", "disallowed artifact extension"),
         ("examples/private.csv", "disallowed artifact extension"),
         ("examples/trace.jsonl", "disallowed artifact extension"),
@@ -110,6 +112,20 @@ def test_summary_rejects_private_metadata_invalid_types_and_unapproved_text() ->
 )
 def test_private_or_unapproved_paths_fail(path: str, expected: str) -> None:
     assert expected in categories([entry(path)])
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "results/README.md",
+        "results/run-2026-09/results.csv",
+        "results/run-2026-09/eee/paper-a/record.json",
+        "results/run-2026-10-subset/summary.json",
+        "results/comparison/values.csv",
+    ],
+)
+def test_approved_result_tables_and_records_pass(path: str) -> None:
+    assert categories([entry(path)]) == set()
 
 
 @pytest.mark.parametrize("mode", ["120000", "160000", "unmerged"])

@@ -1,0 +1,220 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2021-emnlp-main-822/a-0rand-648d56e3",
+  "evaluation_results": [
+    {
+      "evaluation_name": "All domains / F1",
+      "evaluation_result_id": "obs_4c7745f1a308578e9bd8",
+      "metric_config": {
+        "additional_details": {
+          "construct": "Offensive language detection performance"
+        },
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "f1",
+        "metric_kind": "f1",
+        "metric_name": "F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_4c7745f1a308578e9bd8",
+          "candidate_occurrence_ids": "candidate_occurrence_032ee3a2af5e5b9eb3f16b83",
+          "evidence_1_column": "All domains",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 5",
+          "evidence_1_page": "7",
+          "evidence_1_quote_sha256": "7953d58459f01f5c4dfa2713655adfa60d219bf98a6f5ec66bfca91d689e3008",
+          "evidence_1_row": "A++/+/0rand         2700      0.719          0.730",
+          "evidence_1_source_id": "src_d56ac505882c4a7aa5d0",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "49c6bc67dd85d6117e6f7c65de9f33fb757020559d658f666bfc0ecad6bf7088",
+          "evidence_anchor_count": "1",
+          "evidence_page": "7",
+          "export_candidate_sha256": "b8be73debccace821e43e5968c543ee6e96389d3864ade147274beb368cf2ea3",
+          "export_composition_sha256": "f2751925412d64dd0bdd954ba1c6804b632a0a47935f48e719ec8259ce9b9937",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "a1023ff29cae8129d0ddd3df14cd85a2080caf8fc350464f580d625a5cde3ed9",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "4abe52bc785931863b44bd2f7d7240611ecc1d5b106d1d60782a87a84bb23cbd",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "41414fdf77846607c291184651b9debfe833fdb9c55e92d5564b5fe96af166aa",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "7",
+          "field_system_source_1_quote_sha256": "7953d58459f01f5c4dfa2713655adfa60d219bf98a6f5ec66bfca91d689e3008",
+          "field_system_source_1_source_id": "src_d56ac505882c4a7aa5d0",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "8a4f10a9f80bda40ebed9fb1211a4d3a990f96e47bd92cb9da23ffb90244c3e8",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "7",
+          "field_value_source_1_quote_sha256": "7953d58459f01f5c4dfa2713655adfa60d219bf98a6f5ec66bfca91d689e3008",
+          "field_value_source_1_source_id": "src_d56ac505882c4a7aa5d0",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "0db55b2e2f28e1296ef7d331dc4938f44998a07655beaaf0d5d6aa00c462b257",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2021-emnlp-main-822",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_42df2eee49924b945411a476",
+          "raw_reported_value": "0.719",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.719
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "All domains",
+          "samples_number_reported": "2700"
+        },
+        "dataset_name": "All domains",
+        "source_type": "other"
+      }
+    },
+    {
+      "evaluation_name": "Founta + all domains / F1",
+      "evaluation_result_id": "obs_316ecd12db539212c1ef",
+      "metric_config": {
+        "additional_details": {
+          "construct": "Offensive language detection performance"
+        },
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "f1",
+        "metric_kind": "f1",
+        "metric_name": "F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_316ecd12db539212c1ef",
+          "candidate_occurrence_ids": "candidate_occurrence_3b888fdb0643fbd3517237d0",
+          "evidence_1_column": "Founta + all domains",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 5",
+          "evidence_1_page": "7",
+          "evidence_1_quote_sha256": "7953d58459f01f5c4dfa2713655adfa60d219bf98a6f5ec66bfca91d689e3008",
+          "evidence_1_row": "A++/+/0rand         2700      0.719          0.730",
+          "evidence_1_source_id": "src_d56ac505882c4a7aa5d0",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "49c6bc67dd85d6117e6f7c65de9f33fb757020559d658f666bfc0ecad6bf7088",
+          "evidence_anchor_count": "1",
+          "evidence_page": "7",
+          "export_candidate_sha256": "746e725643673483071291314ad66e57a437595651b03ea762050e5128c3a9c7",
+          "export_composition_sha256": "f2751925412d64dd0bdd954ba1c6804b632a0a47935f48e719ec8259ce9b9937",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "35897e2a885252067e07f7aa0cc48df6595a1a05770f35672e8fa496ca950987",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "4abe52bc785931863b44bd2f7d7240611ecc1d5b106d1d60782a87a84bb23cbd",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "d923fc23b4dea7e89c8ecdbe30ab8c0a7e235bd3d99ce1fe6e03fcfb77863322",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "7",
+          "field_system_source_1_quote_sha256": "7953d58459f01f5c4dfa2713655adfa60d219bf98a6f5ec66bfca91d689e3008",
+          "field_system_source_1_source_id": "src_d56ac505882c4a7aa5d0",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "8a4f10a9f80bda40ebed9fb1211a4d3a990f96e47bd92cb9da23ffb90244c3e8",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "7",
+          "field_value_source_1_quote_sha256": "7953d58459f01f5c4dfa2713655adfa60d219bf98a6f5ec66bfca91d689e3008",
+          "field_value_source_1_source_id": "src_d56ac505882c4a7aa5d0",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "df22cd920e59ce4ee2b55b076eaa074064970c053148cdff79aa2ae871f6f9cf",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2021-emnlp-main-822",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_7357bfdbf6c800d162e53d65",
+          "raw_reported_value": "0.730",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.73
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "Founta + all domains",
+          "samples_number_reported": "2700"
+        },
+        "dataset_name": "Founta + all domains",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "A++/+/0rand",
+    "name": "A++/+/0rand"
+  },
+  "retrieved_timestamp": "1788471620",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "f2751925412d64dd0bdd954ba1c6804b632a0a47935f48e719ec8259ce9b9937",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2021-emnlp-main-822",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Agreeing to Disagree: Annotating Offensive Language Datasets with Annotators’ Disagreement",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

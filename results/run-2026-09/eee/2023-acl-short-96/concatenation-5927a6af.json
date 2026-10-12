@@ -1,0 +1,134 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2023-acl-short-96/concatenation-5927a6af",
+  "evaluation_results": [
+    {
+      "evaluation_name": "multi-attribute control tasks / accuracy",
+      "evaluation_result_id": "obs_bb2bd30da42d1527d095",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 100.0,
+        "metric_id": "accuracy",
+        "metric_kind": "accuracy",
+        "metric_name": "accuracy",
+        "metric_parameters": {},
+        "metric_unit": "percent",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_bb2bd30da42d1527d095",
+          "candidate_occurrence_ids": "candidate_occurrence_befcb92b4943c7770b3810b8",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 4",
+          "evidence_1_page": "5",
+          "evidence_1_quote_sha256": "f049d64a8a304d831cf33d31ec6ef5ab67c7233759c255beb7be31deb2fa44ab",
+          "evidence_1_row": "concatenation",
+          "evidence_1_source_id": "src_52df9b515621f3375132",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "44f5557a2cfebd2e01a44fc214077e84261d3d5b766ccb909dded92c7246f49e",
+          "evidence_2_kind": "table",
+          "evidence_2_label": "Table 4",
+          "evidence_2_page": "5",
+          "evidence_2_quote_sha256": "ff0ca4f4a93acf2b375b3b374df50bca3be35285abefd0e47dbff7e4cd09823e",
+          "evidence_2_source_id": "src_52df9b515621f3375132",
+          "evidence_2_source_role": "paper",
+          "evidence_2_source_sha256": "44f5557a2cfebd2e01a44fc214077e84261d3d5b766ccb909dded92c7246f49e",
+          "evidence_anchor_count": "2",
+          "evidence_page": "5",
+          "export_candidate_sha256": "b167f456b48724c6a1fb87125e8aed777d1d83b68b15024db7d0fa4565527606",
+          "export_composition_sha256": "958e6fcf1547eb62cdd88502b088abda9f274c04bbb6cab4926bd0faba2a6748",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "5",
+          "field_dataset_scope_source_1_quote_sha256": "ff0ca4f4a93acf2b375b3b374df50bca3be35285abefd0e47dbff7e4cd09823e",
+          "field_dataset_scope_source_1_source_id": "src_52df9b515621f3375132",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "5d267465626f2c62aa523b1a4bc486b7a93dc97b773e0fa7749f03a0aaa76264",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "e7fe57482ae5d888f465341c6685496df519eac4a3e02af618da42c91c183fd7",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "42bf902cf6c18d8be95f339aa653af527de4c555d3088a0ac919ce503c19e43f",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "5",
+          "field_system_source_1_quote_sha256": "f049d64a8a304d831cf33d31ec6ef5ab67c7233759c255beb7be31deb2fa44ab",
+          "field_system_source_1_source_id": "src_52df9b515621f3375132",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "185986431459507a87d855825d60fdea0d2945c3fa0595578a54e9e271eb3fdb",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "e138253894636214935fbd71ca9f852e2f4c35933ce03ad9ac93ba6f9b3ef4a3",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "5",
+          "field_value_source_1_quote_sha256": "f049d64a8a304d831cf33d31ec6ef5ab67c7233759c255beb7be31deb2fa44ab",
+          "field_value_source_1_source_id": "src_52df9b515621f3375132",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "0965f0f7f399d649c5af0b67fe5f93d017e1430bff458617c14f881a37e0eb88",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2023-acl-short-96",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_0c146a09d31d321c51984cdf",
+          "raw_reported_value": "70.7",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 70.7
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "multi-attribute control tasks"
+        },
+        "dataset_name": "multi-attribute control tasks",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "concatenation",
+    "name": "concatenation"
+  },
+  "retrieved_timestamp": "1788471630",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "958e6fcf1547eb62cdd88502b088abda9f274c04bbb6cab4926bd0faba2a6748",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2023-acl-short-96",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Focused Prefix Tuning for Controllable Text Generation",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2023-semeval-1-81/albert-xxlarge-v1-57dc7166-version-v1-3bfc2695",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Sub-task C / MCC",
+      "evaluation_result_id": "obs_38b611a6e46c9a21e231",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "mcc",
+        "metric_kind": "correlation",
+        "metric_name": "MCC",
+        "metric_parameters": {},
+        "min_score": -1.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_38b611a6e46c9a21e231",
+          "candidate_occurrence_ids": "candidate_occurrence_8a130df930505ed0918669bb",
+          "evidence_1_column": "MCC",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "5",
+          "evidence_1_quote_sha256": "9027551465d5617e3ce969c0906cc82356aaa51d87f9fd71e07db8c3251f9c53",
+          "evidence_1_row": "ALBERT-XXLarge-v1           41.42           41.36",
+          "evidence_1_source_id": "src_ae6824e551f9e16d2213",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "f0df8140865fdea2220756858577f19df702fb113b759799fed44fe12d83c3b5",
+          "evidence_2_column": "MCC",
+          "evidence_2_kind": "table",
+          "evidence_2_page": "5",
+          "evidence_2_quote_sha256": "91b3d05b7a5f03f7362e945ab2cfef9f4cbcc9706475f8d9df1a6698f4e9cfc2",
+          "evidence_2_row": "Model                      Macro-F1         MCC",
+          "evidence_2_source_id": "src_ae6824e551f9e16d2213",
+          "evidence_2_source_role": "paper",
+          "evidence_2_source_sha256": "f0df8140865fdea2220756858577f19df702fb113b759799fed44fe12d83c3b5",
+          "evidence_anchor_count": "2",
+          "evidence_page": "5",
+          "export_candidate_sha256": "5d8351b5ac06b8c0ddcea36fe478651c9b610dd25d3f6440559ff46525a03bb7",
+          "export_composition_sha256": "f29e218fe276c3f74690482f985335160fac5c583cefb84683c6bc1bda8fa473",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "5",
+          "field_dataset_scope_source_1_quote_sha256": "91b3d05b7a5f03f7362e945ab2cfef9f4cbcc9706475f8d9df1a6698f4e9cfc2",
+          "field_dataset_scope_source_1_source_id": "src_ae6824e551f9e16d2213",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "deda84706e091e8324e12b41bdd30f6fc627bea9162e1ec511fe639680ec9c30",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "e1ab38087263db75ecba4bdd3f53cad2798b8858bc086fac6597341838750da8",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "a720beedfa416ec78a7b7592eb0b0c3a2db480bb4afef9c65a2e37e3ee1fdb79",
+          "field_system_reason": "field_partially_supported_by_evidence_quotes",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "5",
+          "field_system_source_1_quote_sha256": "9027551465d5617e3ce969c0906cc82356aaa51d87f9fd71e07db8c3251f9c53",
+          "field_system_source_1_source_id": "src_ae6824e551f9e16d2213",
+          "field_system_source_count": "1",
+          "field_system_status": "ambiguous",
+          "field_system_value_sha256": "d2a8b1a7abc5a8a4e6e607c5a372701b6315e1ee9621dea6d09313a5baa52f5a",
+          "field_unit_reason": "field_not_present",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "cdbd70eed3a69af52e8116dc5d905384cc7d0372f74c8de928e7fbf3d0df03f2",
+          "field_value_reason": "value_outside_registry_metric_bounds",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "5",
+          "field_value_source_1_quote_sha256": "9027551465d5617e3ce969c0906cc82356aaa51d87f9fd71e07db8c3251f9c53",
+          "field_value_source_1_source_id": "src_ae6824e551f9e16d2213",
+          "field_value_source_count": "1",
+          "field_value_status": "unsupported",
+          "field_value_value_sha256": "3944dff2d198707ec53595ca6ed82de9ac09bbc22e8844cb20e54ff1ce410cdc",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2023-semeval-1-81",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_53b3f8ed2e276ead42662d78",
+          "raw_reported_value": "41.36",
+          "referential_status": "unresolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 41.36
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "Sub-task C",
+          "subset": "Sub-task C"
+        },
+        "dataset_name": "Sub-task C",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name",
+      "reported_version": "v1"
+    },
+    "id": "ALBERT-XXLarge-v1",
+    "name": "ALBERT-XXLarge-v1"
+  },
+  "retrieved_timestamp": "1788471660",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "f29e218fe276c3f74690482f985335160fac5c583cefb84683c6bc1bda8fa473",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2023-semeval-1-81",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "NLP_CHRISTINE at SemEval-2023 Task 10: Utilizing Transformer Contextual Representations and Ensemble Learning for Sexism Detection on Social Media Texts",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

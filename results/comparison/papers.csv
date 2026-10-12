@@ -1,0 +1,11 @@
+﻿paper_id,title,pdf_url,proposed_values_old,proposed_values_new,exported_values_old,exported_values_new,values_kept,values_only_old,values_only_new
+2020-semeval-1-295,UoB at SemEval-2020 Task 12: Boosting BERT with Corpus Level Information,https://aclanthology.org/2020.semeval-1.295.pdf,73,58,59,45,42,17,3
+2021-konvens-1-4,How Hateful are Movies? A Study and Prediction on Movie Subtitles,https://aclanthology.org/2021.konvens-1.4.pdf,135,248,21,25,10,11,15
+2022-findings-acl-308,"On the Safety of Conversational Models: Taxonomy, Dataset, and Benchmark",https://aclanthology.org/2022.findings-acl.308.pdf,81,227,42,73,30,12,43
+2022-socialnlp-1-4,Leveraging Dependency Grammar for Fine-Grained Offensive Language Detection using Graph Convolutional Networks,https://aclanthology.org/2022.socialnlp-1.4.pdf,84,91,68,72,61,7,11
+2023-findings-acl-241,Teacher and Student Models of Offensive Language in Social Media,https://aclanthology.org/2023.findings-acl.241.pdf,66,53,48,34,34,14,0
+2024-case-1-19,AAST-NLP at Multimodal Hate Speech Event Detection 2024 : A Multimodal Approach for Classification of Text-Embedded Images Based on CLIP and BERT-Based Models.,https://aclanthology.org/2024.case-1.19.pdf,42,42,26,36,24,2,12
+2025-chipsal-1-31,Dll5143A@NLU of Devanagari Script Languages 2025: Detection of Hate Speech and Targets Using Hierarchical Attention Network,https://aclanthology.org/2025.chipsal-1.31.pdf,250,266,45,7,0,45,7
+2025-coling-main-262,Revisiting Implicitly Abusive Language Detection: Evaluating LLMs in Zero-Shot and Few-Shot Settings,https://aclanthology.org/2025.coling-main.262.pdf,173,273,61,88,15,46,73
+2025-emnlp-main-863,Are Large Language Models Chronically Online Surfers? A Dataset for Chinese Internet Meme Explanation,https://aclanthology.org/2025.emnlp-main.863.pdf,143,0,68,0,0,68,0
+2025-ltedi-1-13,NS@LT-EDI-2025 CasteMigration based hate speech Detection,https://aclanthology.org/2025.ltedi-1.13.pdf,72,73,72,72,66,6,6

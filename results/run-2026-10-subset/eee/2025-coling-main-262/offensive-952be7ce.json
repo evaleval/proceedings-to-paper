@@ -1,0 +1,143 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2025-coling-main-262/offensive-952be7ce",
+  "evaluation_results": [
+    {
+      "evaluation_name": "offensive / F1",
+      "evaluation_result_id": "obs_164e805cc558ef68c457",
+      "metric_config": {
+        "additional_details": {
+          "construct": "f1"
+        },
+        "lower_is_better": false,
+        "max_score": 100.0,
+        "metric_id": "f1",
+        "metric_kind": "f1",
+        "metric_name": "F1",
+        "metric_parameters": {},
+        "metric_unit": "percent",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_cues": "",
+          "attribution_rule_id": "not_a_table_row",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_164e805cc558ef68c457",
+          "candidate_occurrence_ids": "candidate_occurrence_ed3024f6a78749d4cba4ae52",
+          "evidence_1_column": "Zero-shot",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "6",
+          "evidence_1_quote_sha256": "08905112b385201eb65c24dbac258335514471192e98d1236c40ff5643bba5d9",
+          "evidence_1_row": "offensive      70.9 (±8.2) 72.7 (±9.0) 71.8 (±8.6)",
+          "evidence_1_source_id": "src_4759c09d8ecd84d424fd",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "b73d765a45e2ba1826a23dc681279511705c163565094ba09885a4211739b0f2",
+          "evidence_anchor_count": "1",
+          "evidence_page": "6",
+          "export_candidate_sha256": "2c50f5d96fe52b75f751995324822906aca7692ead7ff93ef58c69dcbfbf7826",
+          "export_composition_sha256": "178a5183ce93416f5476db023e4c1e2c9e723c3dad8d3f6610f4dc0e36ba9c65",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "6",
+          "field_dataset_scope_source_1_quote_sha256": "08905112b385201eb65c24dbac258335514471192e98d1236c40ff5643bba5d9",
+          "field_dataset_scope_source_1_source_id": "src_4759c09d8ecd84d424fd",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "95833a3ee398c1d17e76ce86ba56a1f4011d38d4644df5a240b6d1f5d8200ba1",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "201deefe385369afb6d23b41f00221d10341b3b48e410860fd2ab9e040f11b2f",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "583f5e28f9d996fcde87ba96b78daa2cfab42a73ef3071f400b472489f7e7c3a",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "6",
+          "field_system_source_1_quote_sha256": "08905112b385201eb65c24dbac258335514471192e98d1236c40ff5643bba5d9",
+          "field_system_source_1_source_id": "src_4759c09d8ecd84d424fd",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "31908ac71604a2b8967aaf3cad17a02c790f74d207ea03545dbd22697e34f169",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "e138253894636214935fbd71ca9f852e2f4c35933ce03ad9ac93ba6f9b3ef4a3",
+          "field_value_reason": "value_comparator_or_uncertainty_not_supported_by_evidence_quotes",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "6",
+          "field_value_source_1_quote_sha256": "08905112b385201eb65c24dbac258335514471192e98d1236c40ff5643bba5d9",
+          "field_value_source_1_source_id": "src_4759c09d8ecd84d424fd",
+          "field_value_source_count": "1",
+          "field_value_status": "ambiguous",
+          "field_value_value_sha256": "259925f2a1ee28e82a1005dc5708a3163f9e79eb4c2d15587482e437cc166e31",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "metric_bounds": "registry",
+          "metric_identity_source": "registry",
+          "origin_export_policy": "tiered",
+          "paper_id": "2025-coling-main-262",
+          "producer_origin_basis": "model_asserted_primary_unchecked",
+          "proposal_ids": "proposal_ed0b4a1926fbb09570573f63",
+          "raw_reported_value": "70.9",
+          "referential_status": "wrong_scope",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 70.9,
+        "uncertainty": {
+          "standard_deviation": 8.2
+        }
+      },
+      "source_data": {
+        "additional_details": {
+          "dataset_binding_class": "none",
+          "dataset_binding_rule": "none_no_rule_matched",
+          "dataset_raw": "offensive",
+          "raw_scope": "Zero-shot"
+        },
+        "dataset_name": "offensive",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "deployment_type": "unknown",
+      "identity_status": "raw_name",
+      "model_availability": "unknown"
+    },
+    "id": "offensive",
+    "name": "offensive"
+  },
+  "retrieved_timestamp": "1788471677",
+  "schema_version": "0.3.0",
+  "source_metadata": {
+    "additional_details": {
+      "dataset_inventory_sha256": "2a41d34c462401b86a14a05f47116f60af14cb4dbb6fa82e2127d561385bd5e9",
+      "export_composition_sha256": "178a5183ce93416f5476db023e4c1e2c9e723c3dad8d3f6610f4dc0e36ba9c65",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2025-coling-main-262",
+      "pipeline_git_commit": "402fcc9f0488a35aee936e8da199216a37301bcc",
+      "producer_origin_basis": "model_asserted_primary_unchecked",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Revisiting Implicitly Abusive Language Detection: Evaluating LLMs in Zero-Shot and Few-Shot Settings",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

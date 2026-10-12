@@ -1,0 +1,152 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2025-findings-acl-976/gemini-1-5-pro-732280b7-version-1-5-pro-eb473ab2",
+  "evaluation_results": [
+    {
+      "evaluation_name": "POS / acc",
+      "evaluation_result_id": "obs_4112d114db0f1ea2fdf2",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 100.0,
+        "metric_id": "accuracy",
+        "metric_kind": "accuracy",
+        "metric_name": "acc",
+        "metric_parameters": {},
+        "metric_unit": "percent",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_4112d114db0f1ea2fdf2",
+          "candidate_occurrence_ids": "candidate_occurrence_6fba97ca282cd5f431d1b736",
+          "evidence_1_column": "POS acc",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 4",
+          "evidence_1_page": "7",
+          "evidence_1_quote_sha256": "4ee5fd933522d7ffe56772778cbeda7f707006f77d9c53223477e7a78ceb23d5",
+          "evidence_1_row": "Gemini 1.5 pro",
+          "evidence_1_source_id": "src_e0edfac89a7e55eedde1",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "5f3fa121436d718c9cc0f38acd67a515a41447847a878bf868a5f0389b549b43",
+          "evidence_2_column": "POS",
+          "evidence_2_kind": "table",
+          "evidence_2_label": "Table 4",
+          "evidence_2_page": "7",
+          "evidence_2_quote_sha256": "0c3be68d1b284b997506688a6213edc8701507d3747b9ba8681c3fd5f0d75f90",
+          "evidence_2_row": "Tasks",
+          "evidence_2_source_id": "src_e0edfac89a7e55eedde1",
+          "evidence_2_source_role": "paper",
+          "evidence_2_source_sha256": "5f3fa121436d718c9cc0f38acd67a515a41447847a878bf868a5f0389b549b43",
+          "evidence_3_column": "acc",
+          "evidence_3_kind": "table",
+          "evidence_3_label": "Table 4",
+          "evidence_3_page": "7",
+          "evidence_3_quote_sha256": "5f3c19a78c2f269c5aa9bcd5f23b358d3b8ba2007355094a54d10484b4553f57",
+          "evidence_3_row": "Metrics",
+          "evidence_3_source_id": "src_e0edfac89a7e55eedde1",
+          "evidence_3_source_role": "paper",
+          "evidence_3_source_sha256": "5f3fa121436d718c9cc0f38acd67a515a41447847a878bf868a5f0389b549b43",
+          "evidence_anchor_count": "3",
+          "evidence_page": "7",
+          "export_candidate_sha256": "adb3ca198214747e5fe17e43cfadde424397584bc0af9f82838b3734a5c1757c",
+          "export_composition_sha256": "7e5077a79c88cb1f0fad285b8fb5d9fd10c646868a7bd54c59b857a0c5e8c218",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "7",
+          "field_dataset_scope_source_1_quote_sha256": "0c3be68d1b284b997506688a6213edc8701507d3747b9ba8681c3fd5f0d75f90",
+          "field_dataset_scope_source_1_source_id": "src_e0edfac89a7e55eedde1",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "eb389edc8c2af45a17e8d55244897f43c5997415280835662d9580d0e00d9c4f",
+          "field_metric_reason": "field_partially_supported_by_evidence_quotes",
+          "field_metric_source_1_kind": "evidence_quote",
+          "field_metric_source_1_page": "7",
+          "field_metric_source_1_quote_sha256": "5f3c19a78c2f269c5aa9bcd5f23b358d3b8ba2007355094a54d10484b4553f57",
+          "field_metric_source_1_source_id": "src_e0edfac89a7e55eedde1",
+          "field_metric_source_count": "1",
+          "field_metric_status": "ambiguous",
+          "field_metric_value_sha256": "29ef9720b483c1c7acf1f85e0a8bae00f06cec88033c3807f756ccc7df42f2cb",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "9e78d4b3b73313bf66fc1ee1651c421325f65bd430b04f7fd59552a84636fad2",
+          "field_system_reason": "field_partially_supported_by_evidence_quotes",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "7",
+          "field_system_source_1_quote_sha256": "4ee5fd933522d7ffe56772778cbeda7f707006f77d9c53223477e7a78ceb23d5",
+          "field_system_source_1_source_id": "src_e0edfac89a7e55eedde1",
+          "field_system_source_count": "1",
+          "field_system_status": "ambiguous",
+          "field_system_value_sha256": "a653b8569c9077d071bc5b916c0c00851bfe92ffb47546fa4002cf5f8907f635",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "e138253894636214935fbd71ca9f852e2f4c35933ce03ad9ac93ba6f9b3ef4a3",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "7",
+          "field_value_source_1_quote_sha256": "4ee5fd933522d7ffe56772778cbeda7f707006f77d9c53223477e7a78ceb23d5",
+          "field_value_source_1_source_id": "src_e0edfac89a7e55eedde1",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "eae666a890352b3832d4ba0d0c5dccacc9c544cc78d74e1327bae5d689e11db8",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2025-findings-acl-976",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_ed019385be5ebebcdfff1fe7",
+          "raw_reported_value": "60.8",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 60.8
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "POS"
+        },
+        "dataset_name": "POS",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name",
+      "reported_version": "1.5 pro"
+    },
+    "id": "Gemini 1.5 pro",
+    "name": "Gemini 1.5 pro"
+  },
+  "retrieved_timestamp": "1788471696",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "7e5077a79c88cb1f0fad285b8fb5d9fd10c646868a7bd54c59b857a0c5e8c218",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2025-findings-acl-976",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "AfroBench: How Good are Large Language Models on African Languages?",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

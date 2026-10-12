@@ -1,0 +1,137 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2020-semeval-1-295/all-unt-8cc36a8e",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Sub-task B / Macro F1",
+      "evaluation_result_id": "obs_0eadfe5f02d5b3c8304c",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "macro_f1",
+        "metric_kind": "f1",
+        "metric_name": "Macro F1",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_0eadfe5f02d5b3c8304c",
+          "candidate_occurrence_ids": "candidate_occurrence_6ab9a4d670048b530e20c3e3",
+          "evidence_1_column": "Macro F1",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 2",
+          "evidence_1_page": "4",
+          "evidence_1_quote_sha256": "106dba6f214ce12ff89e681a400306f7289c0f12fb2f303df3e6a8d515701b44",
+          "evidence_1_row": "All UNT 0.2869",
+          "evidence_1_source_id": "src_c168c134b3e125b234a5",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "183d92367c29d4deb198852ab6cbcdaee9cb89790535ebf8ec8cb265cd1189df",
+          "evidence_2_kind": "table",
+          "evidence_2_label": "Table 2",
+          "evidence_2_page": "4",
+          "evidence_2_quote_sha256": "b49ae54017f5cce8633eff1291d33cfe9b03c13cb97c95fec3305089eb06ada4",
+          "evidence_2_row": "(b) Sub-task B",
+          "evidence_2_source_id": "src_c168c134b3e125b234a5",
+          "evidence_2_source_role": "paper",
+          "evidence_2_source_sha256": "183d92367c29d4deb198852ab6cbcdaee9cb89790535ebf8ec8cb265cd1189df",
+          "evidence_anchor_count": "2",
+          "evidence_page": "4",
+          "export_candidate_sha256": "571cbb761dbe0fd97e59d825b33ea7a2ed6e60a7dfeeb6516169984534414ae1",
+          "export_composition_sha256": "f7e383b9e0f07422ab8c52f7e8f639e5fae32630e1d2b7dd652cf65633373bb0",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "4",
+          "field_dataset_scope_source_1_quote_sha256": "b49ae54017f5cce8633eff1291d33cfe9b03c13cb97c95fec3305089eb06ada4",
+          "field_dataset_scope_source_1_source_id": "src_c168c134b3e125b234a5",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "c04bd9f795be793d7588e25966a1b1edb08e2633f26ec5e1ff2818e06b833ad5",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "34c0cea3dd48881b477e35d95fe3fcde4b2916ba584b3959a3860dc42810a162",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "9cad5f6a295faca96a58c3e8ee3a7ac101cf3d132cae3abdc51d60987055898c",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "4",
+          "field_system_source_1_quote_sha256": "106dba6f214ce12ff89e681a400306f7289c0f12fb2f303df3e6a8d515701b44",
+          "field_system_source_1_source_id": "src_c168c134b3e125b234a5",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "383d62fae874fe9a01a38da49e7a4d76f2eac4284d4da60e0a916375850d1b44",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "4",
+          "field_value_source_1_quote_sha256": "106dba6f214ce12ff89e681a400306f7289c0f12fb2f303df3e6a8d515701b44",
+          "field_value_source_1_source_id": "src_c168c134b3e125b234a5",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "8ec13715ed6e6d155394374be71b0c26e5eb43d68db62921eb8ae9e5f802debe",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2020-semeval-1-295",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_5c402066951c0948ebfb9532",
+          "raw_reported_value": "0.2869",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.2869
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "(b) Sub-task B",
+          "subset": "Sub-task B"
+        },
+        "dataset_name": "Sub-task B",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "All UNT",
+    "name": "All UNT"
+  },
+  "retrieved_timestamp": "1788471621",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "f7e383b9e0f07422ab8c52f7e8f639e5fae32630e1d2b7dd652cf65633373bb0",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2020-semeval-1-295",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "UoB at SemEval-2020 Task 12: Boosting BERT with Corpus Level Information",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

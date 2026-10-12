@@ -1,0 +1,69 @@
+{
+  "schema_version": "run-summary/0.1",
+  "run": "2026-10-subset",
+  "snapshot_date": "2026-10-12",
+  "pipeline_git_commit": "402fcc9f0488a35aee936e8da199216a37301bcc",
+  "papers": {
+    "selected": 10,
+    "processed": 9,
+    "stopped_at_ceiling": [
+      "2025-emnlp-main-863"
+    ],
+    "pages_read": 121,
+    "page_cap": null,
+    "blocks_per_page_cap": null,
+    "chunk_bounds": {
+      "max_data_rows": 14,
+      "max_numeric_cells": 24
+    }
+  },
+  "extractor_model": "google/gemini-3.5-flash-lite",
+  "review_model": "google/gemini-3.5-flash-lite",
+  "candidates": {
+    "total": 1331,
+    "reviewed": 1193,
+    "review_decisions": {
+      "accept_tuple_only": 696,
+      "reject": 265,
+      "abstain": 216,
+      "accept": 16
+    }
+  },
+  "eee": {
+    "schema_version": "0.3.0",
+    "origin_policy": "tiered",
+    "records": 73,
+    "values": 452,
+    "papers_with_records": 9,
+    "records_by_tier": {
+      "model_reviewed": 73
+    },
+    "records_by_producer_origin_basis": {
+      "model_asserted_primary_no_external_cue": 61,
+      "model_asserted_primary_unchecked": 12
+    },
+    "values_by_dataset_binding_class": {
+      "unique": 81,
+      "none": 226,
+      "exact": 121,
+      "caption": 24
+    },
+    "values_with_split": 132,
+    "values_by_metric_identity_source": {
+      "registry": 445,
+      "model": 4,
+      "registry_concordant": 3
+    },
+    "attribution_lexicon": "attribution-cues-v2"
+  },
+  "funnel": {
+    "skipped_no_metric_id": 132,
+    "skipped_no_origin_basis": 0,
+    "skipped_reviewer_withheld_origin": 92,
+    "skipped_cue_overrides_review": 0
+  },
+  "notes": [
+    "The extraction of this run predates the sparse-output retry that the code now applies; the own-row exemption was applied by the offline recomposition.",
+    "Counts are measured on the saved run; no figure here is a human judgement."
+  ]
+}

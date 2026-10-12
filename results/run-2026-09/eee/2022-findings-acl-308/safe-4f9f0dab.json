@@ -1,0 +1,129 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2022-findings-acl-308/safe-4f9f0dab",
+  "evaluation_results": [
+    {
+      "evaluation_name": "OU / Prec.",
+      "evaluation_result_id": "obs_a8d2b5378ca98f28aa40",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 100.0,
+        "metric_id": "precision",
+        "metric_kind": "precision",
+        "metric_name": "Prec.",
+        "metric_parameters": {},
+        "metric_unit": "percent",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_a8d2b5378ca98f28aa40",
+          "candidate_occurrence_ids": "candidate_occurrence_206bf7bbf70e61f9f1975718",
+          "evidence_1_column": "With Context (%) Prec.",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "6",
+          "evidence_1_quote_sha256": "6d4b33c7486d7a7ffc291695859491b7a42ca0b56b085080ab628bde8aa0a6d0",
+          "evidence_1_row": "OU",
+          "evidence_1_source_id": "src_d73b3352c94151e0a48c",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "8397ef505efdad1c059f8feb61d5aa75e91716aa90c32074d4fd183257e31bd9",
+          "evidence_anchor_count": "1",
+          "evidence_page": "6",
+          "export_candidate_sha256": "82903c517b37fb1d98d911c1e3e69a9ce3e0faac2b7787c36b04a3dd9bad7fc0",
+          "export_composition_sha256": "8b46fb14268fe2d365b3587fcca8401477318b9283074c2037e7bbeb5deb0203",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "6",
+          "field_dataset_scope_source_1_quote_sha256": "6d4b33c7486d7a7ffc291695859491b7a42ca0b56b085080ab628bde8aa0a6d0",
+          "field_dataset_scope_source_1_source_id": "src_d73b3352c94151e0a48c",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "58d3fd5878cb08640222a28316ed388b4ebc88453157131c3e9a53162ecaf626",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "4f76ed5b5c9d47a8482a0fdcc89d434daf8e11da44c854d2105e1e18152cfb94",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "365105d6eb63771ea8194a2c4e584feaa18772e196776f024b4213b13a2da653",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "6",
+          "field_system_source_1_quote_sha256": "6d4b33c7486d7a7ffc291695859491b7a42ca0b56b085080ab628bde8aa0a6d0",
+          "field_system_source_1_source_id": "src_d73b3352c94151e0a48c",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "9b68c01f829620ffec6f411d8f6a15b5966615914191e679a2e7460184d0b954",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "e138253894636214935fbd71ca9f852e2f4c35933ce03ad9ac93ba6f9b3ef4a3",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "6",
+          "field_value_source_1_quote_sha256": "6d4b33c7486d7a7ffc291695859491b7a42ca0b56b085080ab628bde8aa0a6d0",
+          "field_value_source_1_source_id": "src_d73b3352c94151e0a48c",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "75866179e9befed7e44d763d306580af85fdfe0879d1e9c2f7810ccdd997ffdc",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2022-findings-acl-308",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_d296dda93032d93789acd4a9",
+          "raw_reported_value": "87.8",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 87.8
+      },
+      "source_data": {
+        "additional_details": {
+          "group": "Safe",
+          "raw_scope": "OU, Safe, With Context",
+          "subset": "OU"
+        },
+        "dataset_name": "OU",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "Safe",
+    "name": "Safe"
+  },
+  "retrieved_timestamp": "1788471674",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "8b46fb14268fe2d365b3587fcca8401477318b9283074c2037e7bbeb5deb0203",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2022-findings-acl-308",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "On the Safety of Conversational Models: Taxonomy, Dataset, and Benchmark",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

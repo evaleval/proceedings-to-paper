@@ -1,0 +1,140 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2018-evalita-1-31/itt-c-run3-tsv-8d354eed",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Subtask A - English / Accuracy",
+      "evaluation_result_id": "obs_f79d42e43b1362dd1d81",
+      "metric_config": {
+        "additional_details": {
+          "construct": "accuracy"
+        },
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "accuracy",
+        "metric_kind": "accuracy",
+        "metric_name": "Accuracy",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_f79d42e43b1362dd1d81",
+          "candidate_occurrence_ids": "candidate_occurrence_304683a19059df69e92dcc9b",
+          "evidence_1_column": "Accuracy",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "4",
+          "evidence_1_quote_sha256": "b22c7eed322bbd8553664522a72669bd522e8d153daebd4eaf9be08571c90e9b",
+          "evidence_1_row": "9          ITT.c.run3.tsv    0.636",
+          "evidence_1_source_id": "src_b0b0e6068a6ee6205178",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "138766ec331d032f592f8c28e380107a2db8acd7dced1e98c722e407a8b08b8b",
+          "evidence_2_column": "Accuracy",
+          "evidence_2_kind": "table",
+          "evidence_2_page": "4",
+          "evidence_2_quote_sha256": "f252a2575bf46c4ae1350acb3a7ba1c0ead284993c8ea8558eff24e291589629",
+          "evidence_2_row": "Subtask A - English",
+          "evidence_2_source_id": "src_b0b0e6068a6ee6205178",
+          "evidence_2_source_role": "paper",
+          "evidence_2_source_sha256": "138766ec331d032f592f8c28e380107a2db8acd7dced1e98c722e407a8b08b8b",
+          "evidence_anchor_count": "2",
+          "evidence_page": "4",
+          "export_candidate_sha256": "ce7516ce30b394537bc6b36d33d6a2e2c4869c39efbec1554b37f89e3b93f584",
+          "export_composition_sha256": "d639c69295da597488ecf6785a19b9f5ea1cf95a0f5fea8ca9cd3c92a59ac6c3",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "4",
+          "field_dataset_scope_source_1_quote_sha256": "f252a2575bf46c4ae1350acb3a7ba1c0ead284993c8ea8558eff24e291589629",
+          "field_dataset_scope_source_1_source_id": "src_b0b0e6068a6ee6205178",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "a5194b12590f5a6390bcb8f23bd39a1c8f17747e2af3f94bbd6ab1f2ea391a0b",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "bbf31ed22937031b6f7479d6e3bfaa4a0603c7c331ea90a1c6a176de986b6890",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "bd2e0755a1cfb513539ed2109824555c2bab159a62e902d9cbd5518195ff2cc8",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "4",
+          "field_system_source_1_quote_sha256": "b22c7eed322bbd8553664522a72669bd522e8d153daebd4eaf9be08571c90e9b",
+          "field_system_source_1_source_id": "src_b0b0e6068a6ee6205178",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "7199fd5c40e322a2a948604bf6b2da49c92a6193928dacd8741bf46cfe0610cf",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "4",
+          "field_value_source_1_quote_sha256": "b22c7eed322bbd8553664522a72669bd522e8d153daebd4eaf9be08571c90e9b",
+          "field_value_source_1_source_id": "src_b0b0e6068a6ee6205178",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "87ffb68a8f1bd843448752788cc8d02101c2637a2fd95cb9bfef9d64f5c95a7d",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2018-evalita-1-31",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_a3d4211309c5901313453c98",
+          "raw_reported_value": "0.636",
+          "referential_status": "wrong_scope",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.636
+      },
+      "source_data": {
+        "additional_details": {
+          "language": "English",
+          "raw_scope": "Subtask A - English",
+          "subset": "Subtask A - English"
+        },
+        "dataset_name": "Subtask A - English",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "ITT.c.run3.tsv",
+    "name": "ITT.c.run3.tsv"
+  },
+  "retrieved_timestamp": "1788471669",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "d639c69295da597488ecf6785a19b9f5ea1cf95a0f5fea8ca9cd3c92a59ac6c3",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2018-evalita-1-31",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Misogyny Detection and Classification in English Tweets: The Experience of the ITT Team",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

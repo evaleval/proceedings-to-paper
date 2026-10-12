@@ -1,0 +1,131 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2024-emnlp-main-724/moneyaid-ec6f464e",
+  "evaluation_results": [
+    {
+      "evaluation_name": "MoneyAid / Rec.",
+      "evaluation_result_id": "obs_8ea62469ba4367c4bec0",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "recall",
+        "metric_kind": "recall",
+        "metric_name": "Rec.",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "not_a_table_row",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_8ea62469ba4367c4bec0",
+          "candidate_occurrence_ids": "candidate_occurrence_8a103e677086d13261a1904b",
+          "evidence_1_column": "Rec.",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "25",
+          "evidence_1_quote_sha256": "d0ebf94d539eb44cea7df9a8bc4ab4f4aa10ed6be899f597af30c059fe40c274",
+          "evidence_1_row": "MoneyAid",
+          "evidence_1_source_id": "src_b82fdd16203a72b1bf73",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "3dc9261f16945632944fd4532eb1ab57d2a436866c3b16828c0e2b265358c0ab",
+          "evidence_anchor_count": "1",
+          "evidence_page": "25",
+          "export_candidate_sha256": "b3f5b87fdfa4251f440893f26ad8c4e56790e86bd03e4b14b353485380f291a3",
+          "export_composition_sha256": "80e5768f1fcfcc3ad1023b897275ed8e73b60e6c2fcf29c8b184a5c0de8d1c0c",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "25",
+          "field_dataset_scope_source_1_quote_sha256": "d0ebf94d539eb44cea7df9a8bc4ab4f4aa10ed6be899f597af30c059fe40c274",
+          "field_dataset_scope_source_1_source_id": "src_b82fdd16203a72b1bf73",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "eaceb0dfb49394fe02f6d89516a8f2e6b0dbed47cdb812bd06bd0b98cbecb944",
+          "field_metric_reason": "deterministic_reference_resolution=metric_registry",
+          "field_metric_source_1_kind": "evidence_quote",
+          "field_metric_source_1_page": "25",
+          "field_metric_source_1_quote_sha256": "d0ebf94d539eb44cea7df9a8bc4ab4f4aa10ed6be899f597af30c059fe40c274",
+          "field_metric_source_1_source_id": "src_b82fdd16203a72b1bf73",
+          "field_metric_source_count": "1",
+          "field_metric_status": "bound",
+          "field_metric_value_sha256": "3f904dceb4be4f9f64dca426a22dd133dfd61c3d2c851c74909f3c9670696dd0",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "d998c4dc6f878670a6196e9b11ce529bb43d7950f5864c6900742feea4486164",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "25",
+          "field_system_source_1_quote_sha256": "d0ebf94d539eb44cea7df9a8bc4ab4f4aa10ed6be899f597af30c059fe40c274",
+          "field_system_source_1_source_id": "src_b82fdd16203a72b1bf73",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "727ab2774feddd7e230dbafd6b75109ff20ffef8d8e5905dc390cf64f2a0ff9a",
+          "field_unit_reason": "reference_resolution_changed_unbound_unit",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_reason": "value_numeric_projection_not_supported_by_raw",
+          "field_value_source_count": "0",
+          "field_value_status": "unsupported",
+          "field_value_value_sha256": "dd4133643d7a4e6c341191e3b016764eaaf875a4685e1847b8818a35df03acbc",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2024-emnlp-main-724",
+          "producer_origin_basis": "model_asserted_primary_unchecked",
+          "proposal_ids": "proposal_374221f05a8181cb233f601a",
+          "raw_reported_value": "0.66 ± 0.22",
+          "referential_status": "wrong_scope",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.66,
+        "uncertainty": {
+          "standard_deviation": 0.22
+        }
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "MoneyAid"
+        },
+        "dataset_name": "MoneyAid",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "MoneyAid",
+    "name": "MoneyAid"
+  },
+  "retrieved_timestamp": "1788471698",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "80e5768f1fcfcc3ad1023b897275ed8e73b60e6c2fcf29c8b184a5c0de8d1c0c",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2024-emnlp-main-724",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_unchecked",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "OATH-Frames: Characterizing Online Attitudes Towards Homelessness with LLM Assistants",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

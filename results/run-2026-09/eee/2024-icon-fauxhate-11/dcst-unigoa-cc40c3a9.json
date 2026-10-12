@@ -1,0 +1,144 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2024-icon-fauxhate-11/dcst-unigoa-cc40c3a9",
+  "evaluation_results": [
+    {
+      "evaluation_name": "Task A / Macro F1 Score",
+      "evaluation_result_id": "obs_75b4de87a8e5e48266c7",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "macro_f1",
+        "metric_kind": "f1",
+        "metric_name": "Macro F1 Score",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "row_unresolved",
+          "attribution_state": "unresolved",
+          "candidate_observation_id": "obs_75b4de87a8e5e48266c7",
+          "candidate_occurrence_ids": "candidate_occurrence_5c4406c145131db6cd1af1a7",
+          "evidence_1_column": "Macro F1 Score Rankings for Task A",
+          "evidence_1_kind": "table",
+          "evidence_1_label": "Table 5",
+          "evidence_1_page": "4",
+          "evidence_1_quote_sha256": "3253d321e15b4406eff2cac1a0656b76f5ba368603716bd1285d9683fdad0d87",
+          "evidence_1_row": "1",
+          "evidence_1_source_id": "src_8c93454822cdca14b31b",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "872b819482534a85341c9f1977a0736cbb9de8ba6d621c6d95dd9866443b1931",
+          "evidence_2_kind": "table",
+          "evidence_2_label": "Table 5",
+          "evidence_2_page": "4",
+          "evidence_2_quote_sha256": "11952584194d8116b86b1344af95190877fb6292a5ad327b5711bd2941084821",
+          "evidence_2_source_id": "src_8c93454822cdca14b31b",
+          "evidence_2_source_role": "paper",
+          "evidence_2_source_sha256": "872b819482534a85341c9f1977a0736cbb9de8ba6d621c6d95dd9866443b1931",
+          "evidence_anchor_count": "2",
+          "evidence_page": "4",
+          "export_candidate_sha256": "623a2dd25a752fe63437f141c9e318cc710758ea71729987139b87e343dfbe9d",
+          "export_composition_sha256": "572c2541640a951070b486a6ed38b1ce5f0a21d8b83356a7d5e288acf03449eb",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_source_1_kind": "evidence_quote",
+          "field_dataset_scope_source_1_page": "4",
+          "field_dataset_scope_source_1_quote_sha256": "11952584194d8116b86b1344af95190877fb6292a5ad327b5711bd2941084821",
+          "field_dataset_scope_source_1_source_id": "src_8c93454822cdca14b31b",
+          "field_dataset_scope_source_count": "1",
+          "field_dataset_scope_status": "bound",
+          "field_dataset_scope_value_sha256": "8da9c544a37a821dcdd8715450a69569452c097bfe7d25053a0c1367e23b5693",
+          "field_metric_reason": "deterministic_reference_resolution=metric_registry",
+          "field_metric_source_1_kind": "evidence_quote",
+          "field_metric_source_1_page": "4",
+          "field_metric_source_1_quote_sha256": "11952584194d8116b86b1344af95190877fb6292a5ad327b5711bd2941084821",
+          "field_metric_source_1_source_id": "src_8c93454822cdca14b31b",
+          "field_metric_source_count": "1",
+          "field_metric_status": "bound",
+          "field_metric_value_sha256": "b143fe0eda404b24ef3091d2286d9bc8bf745140b2afc09990d567a46edae6b0",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "015186f212a0c24e3b61ec60894a1f1a389bb9fa8089b1ed71fee8396a3f7387",
+          "field_system_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_system_source_count": "0",
+          "field_system_status": "unsupported",
+          "field_system_value_sha256": "9b05a0c120b07554c014b972a77f770f9c127fcf8cb43335e32f1e45c09c64a2",
+          "field_unit_reason": "deterministic_reference_resolution=unit_resolved_as_proportion_from_registry_bounded_metric_and_printed_decimal",
+          "field_unit_source_1_kind": "evidence_quote",
+          "field_unit_source_1_page": "4",
+          "field_unit_source_1_quote_sha256": "11952584194d8116b86b1344af95190877fb6292a5ad327b5711bd2941084821",
+          "field_unit_source_1_source_id": "src_8c93454822cdca14b31b",
+          "field_unit_source_2_kind": "evidence_quote",
+          "field_unit_source_2_page": "4",
+          "field_unit_source_2_quote_sha256": "3253d321e15b4406eff2cac1a0656b76f5ba368603716bd1285d9683fdad0d87",
+          "field_unit_source_2_source_id": "src_8c93454822cdca14b31b",
+          "field_unit_source_count": "2",
+          "field_unit_status": "bound",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "4",
+          "field_value_source_1_quote_sha256": "3253d321e15b4406eff2cac1a0656b76f5ba368603716bd1285d9683fdad0d87",
+          "field_value_source_1_source_id": "src_8c93454822cdca14b31b",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "f7da59f0554cc1fd5cf6b08e43de23077d0018d6895c46db67534e485274f6ff",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2024-icon-fauxhate-11",
+          "producer_origin_basis": "model_asserted_primary_unchecked",
+          "proposal_ids": "proposal_49b08cbcf9218cb0b397936f",
+          "raw_reported_value": "0.79",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.79
+      },
+      "source_data": {
+        "additional_details": {
+          "raw_scope": "Task A"
+        },
+        "dataset_name": "Task A",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "DCST_unigoa",
+    "name": "DCST_unigoa"
+  },
+  "retrieved_timestamp": "1788471666",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "572c2541640a951070b486a6ed38b1ce5f0a21d8b83356a7d5e288acf03449eb",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2024-icon-fauxhate-11",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_unchecked",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "LoRA adapter weight tuning with multi-task learning for Faux-Hate detection",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

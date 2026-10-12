@@ -1,0 +1,217 @@
+{
+  "eval_library": {
+    "additional_details": {
+      "ingestion_method": "proceedings-to-eee"
+    },
+    "name": "paper-reported",
+    "version": "unknown"
+  },
+  "evaluation_id": "paper/2022-paclic-1-94/mbert-f875ba6f",
+  "evaluation_results": [
+    {
+      "evaluation_name": "HASOC (Hindi) / Precision",
+      "evaluation_result_id": "obs_a381837887592ea5a216",
+      "metric_config": {
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "precision",
+        "metric_kind": "precision",
+        "metric_name": "Precision",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_a381837887592ea5a216",
+          "candidate_occurrence_ids": "candidate_occurrence_b1f80dbf0a73db80b2cf6b9f",
+          "evidence_1_column": "Precision w.avg.",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "9",
+          "evidence_1_quote_sha256": "1ded314e894d5ae92d1c15082265a518b1455862d93be6b0c6dcbe12f5037916",
+          "evidence_1_row": "mBERT",
+          "evidence_1_source_id": "src_6ef3f8574f611acc49cc",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "3461372c774d35cd9a890a06e7d5aedc8f35273f9cd81c417dfffe3d0d5a3a3c",
+          "evidence_anchor_count": "1",
+          "evidence_page": "9",
+          "export_candidate_sha256": "3d9a3f4aca6ae87b644100e2dfdc8073567a393f4954eda1b69a5edb3417681d",
+          "export_composition_sha256": "f0d83096a2fefddf828cec5ea03d235a387d0ed1096c2d2e7e9e27fcf5f37d90",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "677f842ece6ae45a7a75ff25282c6d0e873e5319e4938410c0d3c69477314fd0",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "40080ff2eabd3e61cd117316cdb1c0d5c67d3bb29a1eb8aed70f93d8ea9379df",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "78881cfc54bbbabcabb056b8333a1013fa149fce5d5891d2dfe7cd06bea35e63",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "9",
+          "field_system_source_1_quote_sha256": "1ded314e894d5ae92d1c15082265a518b1455862d93be6b0c6dcbe12f5037916",
+          "field_system_source_1_source_id": "src_6ef3f8574f611acc49cc",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "89ddd04e64122a4d6525edf41f5e01468e5337372048ba5347b558247f707b95",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "9",
+          "field_value_source_1_quote_sha256": "1ded314e894d5ae92d1c15082265a518b1455862d93be6b0c6dcbe12f5037916",
+          "field_value_source_1_source_id": "src_6ef3f8574f611acc49cc",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "6ac8fcfbf5a8df2827c881458671b39988c2e3a17c3dfe0b0bf4d0cfedb2eecb",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2022-paclic-1-94",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_a1ea7c3468a19d4e2abf3828",
+          "raw_reported_value": "0.7949",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.7949
+      },
+      "source_data": {
+        "additional_details": {
+          "aggregation": "w.avg.",
+          "language": "Hindi",
+          "raw_scope": "HASOC (Hindi), w.avg.",
+          "subset": "HASOC (Hindi)"
+        },
+        "dataset_name": "HASOC (Hindi)",
+        "source_type": "other"
+      }
+    },
+    {
+      "evaluation_name": "HASOC (Marathi) / Precision",
+      "evaluation_result_id": "obs_ce0f30fd396562e4cbdf",
+      "metric_config": {
+        "additional_details": {
+          "construct": "precision"
+        },
+        "lower_is_better": false,
+        "max_score": 1.0,
+        "metric_id": "precision",
+        "metric_kind": "precision",
+        "metric_name": "Precision",
+        "metric_parameters": {},
+        "metric_unit": "proportion",
+        "min_score": 0.0,
+        "score_type": "continuous"
+      },
+      "score_details": {
+        "details": {
+          "attribution_rule_id": "no_cue",
+          "attribution_state": "no_signal",
+          "candidate_observation_id": "obs_ce0f30fd396562e4cbdf",
+          "candidate_occurrence_ids": "candidate_occurrence_e51df78bb80bf8b6bf416ab1",
+          "evidence_1_column": "Precision",
+          "evidence_1_kind": "table",
+          "evidence_1_page": "9",
+          "evidence_1_quote_sha256": "e6c8cc1a7ffbf39a4c57c444ada81a17303d1f2201e1f556c06e6c0dca70e363",
+          "evidence_1_row": "mBERT",
+          "evidence_1_source_id": "src_6ef3f8574f611acc49cc",
+          "evidence_1_source_role": "paper",
+          "evidence_1_source_sha256": "3461372c774d35cd9a890a06e7d5aedc8f35273f9cd81c417dfffe3d0d5a3a3c",
+          "evidence_anchor_count": "1",
+          "evidence_page": "9",
+          "export_candidate_sha256": "e3f11034c82baa73a4eee8b3f71a19fbe9b9c88c4f4ce0042d470c456a35081d",
+          "export_composition_sha256": "f0d83096a2fefddf828cec5ea03d235a387d0ed1096c2d2e7e9e27fcf5f37d90",
+          "export_provenance_mode": "legacy_manual",
+          "field_dataset_scope_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_dataset_scope_source_count": "0",
+          "field_dataset_scope_status": "unsupported",
+          "field_dataset_scope_value_sha256": "eb0234cfea36bc339b525376db86ebb801cac249bde8ed1db4b6f39a4ae0304e",
+          "field_metric_reason": "field_identity_not_supported_by_evidence_quotes",
+          "field_metric_source_count": "0",
+          "field_metric_status": "unsupported",
+          "field_metric_value_sha256": "40080ff2eabd3e61cd117316cdb1c0d5c67d3bb29a1eb8aed70f93d8ea9379df",
+          "field_provenance_gate": "unbound",
+          "field_setting_reason": "field_not_supported_by_evidence_quotes",
+          "field_setting_source_count": "0",
+          "field_setting_status": "unsupported",
+          "field_setting_value_sha256": "2e00e40cf1d9128f0e083b1021d9896695ede3c62be9cae5bf619a4f47c46f25",
+          "field_system_source_1_kind": "evidence_quote",
+          "field_system_source_1_page": "9",
+          "field_system_source_1_quote_sha256": "e6c8cc1a7ffbf39a4c57c444ada81a17303d1f2201e1f556c06e6c0dca70e363",
+          "field_system_source_1_source_id": "src_6ef3f8574f611acc49cc",
+          "field_system_source_count": "1",
+          "field_system_status": "bound",
+          "field_system_value_sha256": "89ddd04e64122a4d6525edf41f5e01468e5337372048ba5347b558247f707b95",
+          "field_unit_reason": "field_not_supported_by_evidence_quotes",
+          "field_unit_source_count": "0",
+          "field_unit_status": "unsupported",
+          "field_unit_value_sha256": "0b2874af78d86601ac18354ccd7a6cd755491037489a150e2c9e8186b799930c",
+          "field_value_source_1_kind": "evidence_quote",
+          "field_value_source_1_page": "9",
+          "field_value_source_1_quote_sha256": "e6c8cc1a7ffbf39a4c57c444ada81a17303d1f2201e1f556c06e6c0dca70e363",
+          "field_value_source_1_source_id": "src_6ef3f8574f611acc49cc",
+          "field_value_source_count": "1",
+          "field_value_status": "bound",
+          "field_value_value_sha256": "9b32559dfc4915d75773a361afcd3ff5855d03385d23c1cfaceb213c5b8c4751",
+          "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+          "origin_export_policy": "tiered",
+          "paper_id": "2022-paclic-1-94",
+          "producer_origin_basis": "model_asserted_primary_no_external_cue",
+          "proposal_ids": "proposal_af59277ceaac9ae0042cb2da",
+          "raw_reported_value": "0.9019",
+          "referential_status": "resolved",
+          "review_tier": "model_reviewed",
+          "text_support": "supported",
+          "value_comparator": "exact",
+          "verifier_gate_required": "false"
+        },
+        "score": 0.9019
+      },
+      "source_data": {
+        "additional_details": {
+          "language": "Marathi",
+          "raw_scope": "Models on HASOC (Marathi)"
+        },
+        "dataset_name": "HASOC (Marathi)",
+        "source_type": "other"
+      }
+    }
+  ],
+  "model_info": {
+    "additional_details": {
+      "identity_status": "raw_name"
+    },
+    "id": "mBERT",
+    "name": "mBERT"
+  },
+  "retrieved_timestamp": "1788471655",
+  "schema_version": "0.2.2",
+  "source_metadata": {
+    "additional_details": {
+      "export_composition_sha256": "f0d83096a2fefddf828cec5ea03d235a387d0ed1096c2d2e7e9e27fcf5f37d90",
+      "export_provenance_mode": "legacy_manual",
+      "legacy_provenance_reason": "offline recompose of a finished census run under the tiered producer-origin export policy",
+      "origin_export_policy": "tiered",
+      "paper_id": "2022-paclic-1-94",
+      "pipeline_git_commit": "49484c281668e6cdf361eafdacb52b85055bfcd4",
+      "producer_origin_basis": "model_asserted_primary_no_external_cue",
+      "review_tier": "model_reviewed",
+      "verifier_gate_required": "false"
+    },
+    "evaluator_relationship": "other",
+    "source_name": "Hate speech detection: a comparison of mono and multilingual transformer model with cross-language evaluation",
+    "source_organization_name": "paper authors",
+    "source_type": "documentation"
+  }
+}

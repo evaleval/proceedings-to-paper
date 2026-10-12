@@ -102,7 +102,25 @@ FORBIDDEN_SUFFIXES = frozenset(
         ".zip",
     }
 )
-PUBLIC_RESULTS = frozenset({"results/census-summary-2026-09-05.json"})
+#: Result folders that may be published: one per run plus the comparison between runs.
+#: Each holds aggregate summaries, flat CSV tables and quote-free EEE records only.
+PUBLIC_RESULT_DIRS = (
+    "results/run-2026-09/",
+    "results/run-2026-10-subset/",
+    "results/comparison/",
+)
+PUBLIC_RESULTS = frozenset({"results/README.md"})
+#: The historical September snapshot keeps its fixed aggregate shape.
+SEPTEMBER_SUMMARY = "results/run-2026-09/summary.json"
+PUBLIC_RESULT_SUFFIXES = frozenset({".csv", ".json", ".md"})
+
+
+def _approved_result(path: str) -> bool:
+    if path in PUBLIC_RESULTS:
+        return True
+    return any(path.startswith(prefix) for prefix in PUBLIC_RESULT_DIRS) and (
+        PurePosixPath(path).suffix in PUBLIC_RESULT_SUFFIXES
+    )
 PUBLIC_IMAGES = frozenset({"assets/proceedings-to-eee-pipeline.png"})
 SYNTHETIC_HOME_USERS = frozenset({"example", "private", "reviewer", "synthetic", "test"})
 SECRET_PATTERNS = (
@@ -152,7 +170,9 @@ SUMMARY_SHAPE = {
     },
     "candidates": {"total": int, "text_supported": int},
     "eee": {
-        "schema_version": "0.2.2",
+        # The stored census snapshot was composed under 0.2.2; a later summary of a
+        # re-export carries the current pinned version.
+        "schema_version": re.compile(r"0\.2\.2|0\.3\.0"),
         "schema_sha256": SHA256,
         "origin_policy": "tiered",
         "records": int,
@@ -378,9 +398,12 @@ def check_files(
             findings.append(Finding(path, "private or generated artifact directory"))
         if any(part.startswith(".env") for part in lowered) and path != ".env.example":
             findings.append(Finding(path, "environment file is private"))
-        if any(suffix.lower() in FORBIDDEN_SUFFIXES for suffix in PurePosixPath(path).suffixes):
+        approved_result = parts[0] == "results" and _approved_result(path)
+        if not approved_result and any(
+            suffix.lower() in FORBIDDEN_SUFFIXES for suffix in PurePosixPath(path).suffixes
+        ):
             findings.append(Finding(path, "disallowed artifact extension"))
-        if parts[0] == "results" and path not in PUBLIC_RESULTS:
+        if parts[0] == "results" and not approved_result:
             findings.append(Finding(path, "result artifact is not explicitly approved"))
         if parts[0] == "docs" and PRIVATE_DOCUMENT.search(parts[-1]):
             findings.append(Finding(path, "private working-note filename"))
@@ -404,7 +427,7 @@ def check_files(
         except UnicodeError:
             findings.append(Finding(path, "binary content is not explicitly approved"))
             continue
-        if path in PUBLIC_RESULTS and not safe_public_summary(text):
+        if path == SEPTEMBER_SUMMARY and not safe_public_summary(text):
             findings.append(
                 Finding(path, "public result does not match the approved aggregate schema")
             )
