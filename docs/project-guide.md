@@ -305,6 +305,14 @@ experiments. They are not measurements of the present runs or of the current pub
 source snapshot. The public overview omits those historical rates to keep the
 current claim boundary clear.
 
+## What the project does not do
+
+The pipeline does not generate evaluation or benchmark cards, does not repair or
+guess a missing identity or collapse a scope to make a record fit, does not digitise
+figures without their raw data, does not republish papers, supplements or raw model
+traces, and does not rerun experiments or submit records to an external EEE
+datastore. A value the paper does not state stays unresolved and goes to review.
+
 ## What the current evidence establishes
 
 The saved September run establishes that the workflow processed 105 papers, retained

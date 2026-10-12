@@ -48,5 +48,3 @@ local/
 *.fls
 *.fdb_latexmk
 .venv-*/
-.agents/
-.codex/

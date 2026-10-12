@@ -38,10 +38,9 @@ between them, and the [results folder](results/README.md) holds the per-value ta
 the EEE records and the comparison.
 
 The [project guide](docs/project-guide.md) is the best starting point for understanding
-these concepts and how the different workflows fit together. The
-[architecture documentation](docs/architecture.md) describes the stages and their
-interfaces, while the [project contract](PROJECT_CONTRACT.md) defines the evidence and
-export requirements that the implementation follows.
+these concepts and how the different workflows fit together, and the
+[architecture documentation](docs/architecture.md) describes the stages, their
+interfaces and the evidence and export requirements the implementation follows.
 
 To run the synthetic example, install Python **3.12**, `uv` and Poppler (`pdftotext` and
 `pdfinfo`), then execute the following commands from the repository.

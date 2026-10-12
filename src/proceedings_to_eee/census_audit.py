@@ -1,4 +1,4 @@
-"""AI analyst QA over extracted candidates, judged against the whole source page.
+"""Model-assisted quality check of extracted candidates against the whole source page.
 
 This is a diagnostic, not validation. It says where to look next; it never establishes
 precision, recall, or correctness, and every artifact it writes says so.
@@ -308,7 +308,8 @@ def summarize(rows: Sequence[dict[str, Any]], *, audited: int, dropped: int) -> 
         "review_type": "ai_analyst_qa",
         "independent_human_validation": False,
         "claim_boundary": (
-            "AI analyst QA on a sample, judged by a model that can itself be wrong. Not "
+            "Model-assisted quality check on a sample, judged by a model that can itself be "
+            "wrong. Not "
             "precision, recall, accuracy, or independent validation, and not a substitute "
             "for human annotation."
         ),

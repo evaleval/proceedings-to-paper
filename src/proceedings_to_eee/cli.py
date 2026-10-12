@@ -1355,7 +1355,7 @@ def audit_candidates_command(
     order: Annotated[Path | None, typer.Option(exists=True, readable=True)] = None,
     max_tokens: Annotated[int, typer.Option(min=1)] = 4_000,
 ) -> None:
-    """Audit sampled candidates against their full source page. AI analyst QA only.
+    """Audit sampled candidates against their full source page, for a quality check by a reader.
 
     This is a diagnostic. It is never precision, recall, accuracy, or independent human
     validation, and every artifact it writes says so.
